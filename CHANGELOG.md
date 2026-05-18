@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/icqqjs/cli/compare/v1.4.5...v1.5.0) (2026-05-18)
+
+
+### Features
+
+* enhance service management with global supervisor support ([a0f5324](https://github.com/icqqjs/cli/commit/a0f53246756acf19047cbdaaffa6d751ffb4942f))
+
 ## [1.4.5](https://github.com/icqqjs/cli/compare/v1.4.4...v1.4.5) (2026-04-14)
 
 
