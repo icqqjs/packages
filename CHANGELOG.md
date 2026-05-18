@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/icqqjs/cli/compare/v1.5.0...v1.5.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* publish error ([b96e6eb](https://github.com/icqqjs/cli/commit/b96e6ebd1f18c623c55e86019c1168e8912f0aa9))
+
 ## [1.5.0](https://github.com/icqqjs/cli/compare/v1.4.5...v1.5.0) (2026-05-18)
 
 
