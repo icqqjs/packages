@@ -105,7 +105,7 @@ export class DaemonServer {
   }
 
   private setupMessageForwarding() {
-    this.client.on("message", (event) => {
+    this.client.on("message", (event: any) => {
       const msgType = event.message_type;
       const groupId = "group_id" in event ? (event.group_id as number) : 0;
       const targetId = msgType === "group" ? groupId : event.user_id;

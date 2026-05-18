@@ -167,7 +167,7 @@ const handlers: Record<string, Handler> = {
     const count = params.count ? Number(params.count) : 20;
     const time = params.time ? Number(params.time) : undefined;
     const msgs = await client.pickUser(uid(params)).getChatHistory(time, count);
-    return msgs.map((m) => ({
+    return msgs.map((m: any) => ({
       message_id: m.message_id,
       user_id: m.user_id,
       from_id: m.from_id,
@@ -182,7 +182,7 @@ const handlers: Record<string, Handler> = {
     const count = params.count ? Number(params.count) : 20;
     const seq = params.seq ? Number(params.seq) : undefined;
     const msgs = await client.pickGroup(gid(params)).getChatHistory(seq, count);
-    return msgs.map((m) => ({
+    return msgs.map((m: any) => ({
       message_id: m.message_id,
       user_id: m.user_id,
       group_id: m.group_id,

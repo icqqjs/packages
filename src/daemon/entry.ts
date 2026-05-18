@@ -49,7 +49,7 @@ async function main() {
 
     client.once("system.online", () => settle(resolve));
 
-    client.once("system.login.error", (e) => {
+    client.once("system.login.error", (e: { message: string }) => {
       settle(() => reject(new Error(e.message)));
     });
 
@@ -64,7 +64,7 @@ async function main() {
       settle(() => reject(new Error("需要设备验证。请重新执行 icqq login")));
     });
 
-    client.login(uin).catch((e) => settle(() => reject(e)));
+    client.login(uin).catch((e: unknown) => settle(() => reject(e)));
   });
 
   // Start IPC + optional RPC server
@@ -162,7 +162,7 @@ async function main() {
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("重连超时")), 15000);
           client.once("system.online", () => { clearTimeout(timer); resolve(); });
-          client.once("system.login.error", (e) => { clearTimeout(timer); reject(new Error(e.message)); });
+          client.once("system.login.error", (e: { message: string }) => { clearTimeout(timer); reject(new Error(e.message)); });
         });
         console.log(`[daemon] 重连成功`);
         if (config.notifyEnabled) {
@@ -181,14 +181,14 @@ async function main() {
     reconnecting = false;
   };
 
-  client.on("system.offline.network", (e) => {
+  client.on("system.offline.network", (e: { message: string }) => {
     console.log("[daemon] 网络掉线:", e.message);
     if (config.notifyEnabled) {
       sendNotification({ title: "icqq", body: `网络掉线: ${e.message}` });
     }
     void autoReconnect();
   });
-  client.on("system.offline.kickoff", (e) => {
+  client.on("system.offline.kickoff", (e: { message: string }) => {
     console.log("[daemon] 被踢下线:", e.message);
     if (config.notifyEnabled) {
       sendNotification({ title: "icqq", body: `被踢下线: ${e.message}` });
@@ -196,7 +196,7 @@ async function main() {
   });
 
   // Friend & group request notifications
-  client.on("request.friend.add", (e) => {
+  client.on("request.friend.add", (e: { nickname: string; user_id: number; comment?: string }) => {
     if (config.notifyEnabled) {
       sendNotification({
         title: "icqq · 好友请求",
@@ -204,7 +204,7 @@ async function main() {
       });
     }
   });
-  client.on("request.group.invite", (e) => {
+  client.on("request.group.invite", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number }) => {
     if (config.notifyEnabled) {
       sendNotification({
         title: "icqq · 群邀请",
@@ -212,7 +212,7 @@ async function main() {
       });
     }
   });
-  client.on("request.group.add", (e) => {
+  client.on("request.group.add", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number; comment?: string }) => {
     if (config.notifyEnabled) {
       sendNotification({
         title: "icqq · 入群申请",
