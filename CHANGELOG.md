@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/icqqjs/cli/compare/v1.5.1...v1.5.2) (2026-05-22)
+
+
+### Bug Fixes
+
+* for build ([c35fdce](https://github.com/icqqjs/cli/commit/c35fdceb1fd429f54161db333a77c3d01a4bdf53))
+
 ## [1.5.1](https://github.com/icqqjs/cli/compare/v1.5.0...v1.5.1) (2026-05-18)
 
 
