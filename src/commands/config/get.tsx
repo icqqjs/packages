@@ -4,6 +4,15 @@ import zod from "zod";
 import { argument } from "pastel";
 import { Spinner } from "@/components/Spinner.js";
 import { loadConfig } from "@/lib/config.js";
+import {
+  availableConfigGetKeysHint,
+  getConfigDisplayValue,
+  isConfigGetGroup,
+  isConfigGetKey,
+  isConfigGetQuery,
+  listAllConfigEntries,
+  listGroupConfigEntries,
+} from "@/lib/config-get.js";
 
 export const description = "查看配置项";
 
@@ -11,7 +20,8 @@ export const args = zod.tuple([
   zod.string().optional().describe(
     argument({
       name: "key",
-      description: "配置项名称（不指定则显示全部）",
+      description:
+        "配置项（不指定则显示全部；可用 mcp、rpc 或 mcp.enabled、mcp.http.port 等）",
     }),
   ),
 ]);
@@ -31,29 +41,16 @@ export default function ConfigGet({ args: [key] }: Props) {
       try {
         const config = await loadConfig();
 
-        if (key) {
-          if (!(key in config)) {
-            throw new Error(
-              `未知配置项: ${key}\n可用: currentUin, webhookUrl, notifyEnabled, accounts`,
-            );
-          }
-          const val = (config as any)[key];
-          const display =
-            typeof val === "object" ? JSON.stringify(val, null, 2) : String(val ?? "");
-          setOutput([[key, display]]);
-        } else {
-          const entries: [string, string][] = [
-            ["currentUin", String(config.currentUin ?? "(未设置)")],
-            ["webhookUrl", config.webhookUrl || "(未设置)"],
-            ["notifyEnabled", String(config.notifyEnabled ?? false)],
-            [
-              "accounts",
-              Object.keys(config.accounts).length > 0
-                ? Object.keys(config.accounts).join(", ")
-                : "(无)",
-            ],
-          ];
-          setOutput(entries);
+        if (!key) {
+          setOutput(listAllConfigEntries(config));
+        } else if (!isConfigGetQuery(key)) {
+          throw new Error(
+            `未知配置项: ${key}\n可用: ${availableConfigGetKeysHint()}`,
+          );
+        } else if (isConfigGetGroup(key)) {
+          setOutput(listGroupConfigEntries(config, key));
+        } else if (isConfigGetKey(key)) {
+          setOutput([[key, getConfigDisplayValue(config, key)]]);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
