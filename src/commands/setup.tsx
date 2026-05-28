@@ -9,6 +9,7 @@ import {
   runGithubPackagesGlobalInstall,
   resolveSetupToken,
   formatGithubInstallCommand,
+  formatInstallEnvironment,
   IcqqInstallError,
   type PackageManager,
 } from "@/lib/icqq-install.js";
@@ -153,7 +154,8 @@ export default function Setup({ options: cliOptions }: Props) {
       const installCmd = formatGithubInstallCommand(pm);
       pushLog("④ 从 GitHub Packages 全局安装 …");
       pushLog(`   → 执行：${installCmd}`);
-      pushLog("   → 认证：环境变量（不写入 ~/.npmrc）");
+      pushLog(`   → 环境：${formatInstallEnvironment(pm)}`);
+      pushLog("   → 认证：环境变量 + CLI config（不写入 ~/.npmrc）");
       pushLog("   → 下方为包管理器输出：");
       try {
         runGithubPackagesGlobalInstall(pm, activeToken);

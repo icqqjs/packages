@@ -3,6 +3,20 @@
  */
 import { execFileSync, execSync } from "node:child_process";
 import {
+  buildAuthEnv,
+  buildInstallExtraArgs,
+  describeAuthCompat,
+  shouldFallbackToNpm,
+  ICQQ_GITHUB_REGISTRY,
+  GITHUB_PACKAGES_AUTH_KEY,
+} from "./pm-auth-compat.js";
+import {
+  getPackageManagerMajor,
+  isWithinSupportedMajorWindow,
+  PM_MAJOR_WINDOWS,
+} from "./pm-version.js";
+import { PACKAGE_MANAGERS, type PackageManager } from "./package-manager.js";
+import {
   collectGlobalNodeModulesRoots,
   getIcqqPath,
   isIcqqAvailable,
@@ -10,10 +24,12 @@ import {
   resolveIcqqPackageRoot,
 } from "./icqq-resolve.js";
 
-export const ICQQ_GITHUB_REGISTRY = "https://npm.pkg.github.com";
-
-export const PACKAGE_MANAGERS = ["pnpm", "npm", "cnpm", "yarn"] as const;
-export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
+export {
+  ICQQ_GITHUB_REGISTRY,
+  GITHUB_PACKAGES_AUTH_KEY,
+  PACKAGE_MANAGERS,
+  type PackageManager,
+};
 
 export type InstallFailureKind = "auth" | "other";
 
@@ -64,6 +80,19 @@ export function resolveSetupToken(explicit?: string): string | undefined {
 export type IcqqDiscovery = {
   found: boolean;
   path: string | null;
+};
+
+export type InstallInvocationOptions = {
+  /** 测试注入：跳过 `pm --version` 探测 */
+  majorVersion?: number | null;
+};
+
+export type GithubInstallInvocation = {
+  cmd: string;
+  args: string[];
+  /** 认证策略描述（日志） */
+  authProfile: string;
+  majorVersion: number | null;
 };
 
 /**
@@ -117,8 +146,11 @@ export async function discoverIcqq(
 }
 
 /** 用于日志展示的安装命令（不含 Token） */
-export function formatGithubInstallCommand(pm: PackageManager): string {
-  const { cmd, args } = githubInstallInvocation(pm);
+export function formatGithubInstallCommand(
+  pm: PackageManager,
+  options?: InstallInvocationOptions,
+): string {
+  const { cmd, args } = githubInstallInvocation(pm, options);
   return [cmd, ...args].join(" ");
 }
 
@@ -157,11 +189,65 @@ function isPackageInstalledGlobally(pm: PackageManager, name: string): boolean {
   }
 }
 
-function authEnv(token: string): NodeJS.ProcessEnv {
+function resolveMajor(
+  pm: PackageManager,
+  options?: InstallInvocationOptions,
+): number | null {
+  if (options && "majorVersion" in options) {
+    return options.majorVersion ?? null;
+  }
+  return getPackageManagerMajor(pm);
+}
+
+function installSubcommand(pm: PackageManager, yarnMajor: number | null): {
+  cmd: string;
+  args: string[];
+} {
+  switch (pm) {
+    case "pnpm":
+      return { cmd: "pnpm", args: ["add", "-g", "@icqqjs/icqq"] };
+    case "cnpm":
+      return { cmd: "cnpm", args: ["install", "-g", "@icqqjs/icqq"] };
+    case "yarn":
+      // Yarn 1 无可靠的不落盘 registry 全局安装；Yarn 2+ 用 yarn npm
+      if (yarnMajor !== null && yarnMajor >= 2) {
+        return {
+          cmd: "yarn",
+          args: ["npm", "install", "-g", "@icqqjs/icqq"],
+        };
+      }
+      return {
+        cmd: "npm",
+        args: ["install", "-g", "@icqqjs/icqq"],
+      };
+    case "npm":
+    default:
+      return { cmd: "npm", args: ["install", "-g", "@icqqjs/icqq"] };
+  }
+}
+
+/** Yarn 1 全局安装走 npm 子进程，认证与参数按 npm 处理 */
+function effectiveAuthPm(pm: PackageManager, major: number | null): PackageManager {
+  if (pm === "yarn" && major !== null && major < 2) return "npm";
+  return pm;
+}
+
+export function githubInstallInvocation(
+  pm: PackageManager,
+  options?: InstallInvocationOptions,
+): GithubInstallInvocation {
+  const major = resolveMajor(pm, options);
+  const yarnMajor = pm === "yarn" ? major : null;
+  const authPm = effectiveAuthPm(pm, major);
+  const { cmd, args: baseArgs } = installSubcommand(pm, yarnMajor);
+  const extra = buildInstallExtraArgs(authPm, authPm === pm ? major : getPackageManagerMajor("npm"));
+  const authProfile = describeAuthCompat(pm, major);
+
   return {
-    ...process.env,
-    GITHUB_TOKEN: token,
-    "npm_config_//npm.pkg.github.com/:_authToken": token,
+    cmd,
+    args: [...baseArgs, ...extra],
+    authProfile,
+    majorVersion: major,
   };
 }
 
@@ -188,46 +274,35 @@ export function summarizeInstallFailure(
   return first ? `安装失败：${first.slice(0, 200)}` : "安装失败，请检查网络与包管理器配置。";
 }
 
-export function githubInstallInvocation(pm: PackageManager): {
-  cmd: string;
-  args: string[];
-} {
-  const reg = ICQQ_GITHUB_REGISTRY;
-  switch (pm) {
-    case "pnpm":
-      return {
-        cmd: "pnpm",
-        args: ["add", "-g", "@icqqjs/icqq", `--config.@icqqjs:registry=${reg}`],
-      };
-    case "cnpm":
-      return {
-        cmd: "cnpm",
-        args: ["install", "-g", "@icqqjs/icqq", `--@icqqjs:registry=${reg}`],
-      };
-    case "yarn":
-      return {
-        cmd: "npm",
-        args: ["install", "-g", "@icqqjs/icqq", `--@icqqjs:registry=${reg}`],
-      };
-    default:
-      return {
-        cmd: "npm",
-        args: ["install", "-g", "@icqqjs/icqq", `--@icqqjs:registry=${reg}`],
-      };
-  }
+function pmVersionWarning(pm: PackageManager, major: number | null): string | null {
+  const win = PM_MAJOR_WINDOWS[pm];
+  if (major === null) return null;
+  if (isWithinSupportedMajorWindow(major, win.latest)) return null;
+  return `${pm}@${major} 不在最近维护的大版本窗口（${win.min}–${win.latest}），将尝试兼容安装`;
 }
 
-/** 使用 GitHub Packages 全局安装（不修改 ~/.npmrc） */
-export function runGithubPackagesGlobalInstall(
+function execGithubInstall(
   pm: PackageManager,
   token: string,
+  options?: InstallInvocationOptions,
 ): void {
-  const { cmd, args } = githubInstallInvocation(pm);
+  const major = resolveMajor(pm, options);
+  const authPm = effectiveAuthPm(pm, major);
+  const authMajor =
+    authPm === pm ? major : getPackageManagerMajor("npm");
+  const { cmd, args, authProfile } = githubInstallInvocation(pm, {
+    majorVersion: major,
+  });
+  const env = {
+    ...process.env,
+    ...buildAuthEnv(authPm, token, authMajor),
+  };
+
   try {
     execFileSync(cmd, args, {
       stdio: ["inherit", "inherit", "pipe"],
       timeout: 120_000,
-      env: authEnv(token),
+      env,
     });
   } catch (e: unknown) {
     const err = e as { stderr?: Buffer | string; message?: string };
@@ -238,10 +313,52 @@ export function runGithubPackagesGlobalInstall(
       err.message ||
       String(e);
     const kind = classifyInstallFailure(detail);
+    const hint = pmVersionWarning(pm, major);
+    const profileNote = `认证策略：${authProfile}`;
+    const fullDetail = [hint, profileNote, detail].filter(Boolean).join("\n");
     throw new IcqqInstallError(
       summarizeInstallFailure(kind, detail),
       kind,
-      detail,
+      fullDetail,
     );
   }
+}
+
+/** 使用 GitHub Packages 全局安装（不修改 ~/.npmrc）；认证失败时对非 npm 再试 npm */
+export function runGithubPackagesGlobalInstall(
+  pm: PackageManager,
+  token: string,
+): void {
+  try {
+    execGithubInstall(pm, token);
+  } catch (e: unknown) {
+    if (
+      e instanceof IcqqInstallError &&
+      shouldFallbackToNpm(pm, e.kind)
+    ) {
+      try {
+        execGithubInstall("npm", token);
+        return;
+      } catch (fallbackErr: unknown) {
+        if (fallbackErr instanceof IcqqInstallError) {
+          throw new IcqqInstallError(
+            `${e.message}（已用 npm 重试仍失败：${fallbackErr.message}）`,
+            fallbackErr.kind,
+            `${e.detail}\n--- npm fallback ---\n${fallbackErr.detail}`,
+          );
+        }
+        throw fallbackErr;
+      }
+    }
+    throw e;
+  }
+}
+
+/** 供 setup 日志：包管理器版本与认证策略 */
+export function formatInstallEnvironment(pm: PackageManager): string {
+  const major = getPackageManagerMajor(pm);
+  const warn = pmVersionWarning(pm, major);
+  const auth = describeAuthCompat(pm, major);
+  const ver = major === null ? "?" : String(major);
+  return [warn, `${pm}@${ver}，${auth}`].filter(Boolean).join("；");
 }
