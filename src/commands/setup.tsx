@@ -1,130 +1,301 @@
-import React, { useState, useEffect } from "react";
-import { Text, Box, useApp } from "ink";
-import { execSync } from "node:child_process";
-import { readFileSync, appendFileSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Text, Box, useApp, useInput } from "ink";
+import zod from "zod";
+import { option } from "pastel";
 import { isIcqqAvailable, getIcqqPath } from "@/lib/icqq-resolve.js";
+import {
+  detectPackageManager,
+  discoverIcqq,
+  runGithubPackagesGlobalInstall,
+  resolveSetupToken,
+  formatGithubInstallCommand,
+  IcqqInstallError,
+  type PackageManager,
+} from "@/lib/icqq-install.js";
+import { TOKEN_HELP } from "@/lib/icqq-setup-hint.js";
 
-export const description = "检查并安装 @icqqjs/icqq 依赖";
+export const description = "检查并安装 @icqqjs/icqq 依赖（不修改 ~/.npmrc）";
 
-type Step = "check" | "npmrc" | "install" | "done" | "already" | "error";
-type PM = "pnpm" | "npm" | "cnpm" | "yarn";
+export const options = zod.object({
+  token: zod
+    .string()
+    .optional()
+    .describe(
+      option({
+        description: "GitHub PAT（read:packages）；未提供时将交互输入或使用 GITHUB_TOKEN",
+        alias: "t",
+      }),
+    ),
+});
 
-/** Detect which package manager was used to install this CLI */
-function detectPM(): PM {
-  const selfPath = process.argv[1] ?? "";
-  if (selfPath.includes("/pnpm/") || selfPath.includes("\\pnpm\\")) return "pnpm";
-  if (selfPath.includes("/cnpm/") || selfPath.includes("\\cnpm\\")) return "cnpm";
-  if (selfPath.includes("/yarn/") || selfPath.includes("\\yarn\\")) return "yarn";
-  // Fallback: check env variables / command availability
-  for (const [env, cmd, name] of [
-    ["PNPM_HOME", "pnpm", "pnpm"],
-    ["CNPM_HOME", "cnpm", "cnpm"],
-    ["YARN_GLOBAL_FOLDER", "yarn", "yarn"],
-  ] as const) {
-    if (process.env[env]) {
-      try {
-        execSync(`${cmd} --version`, { stdio: "ignore" });
-        return name as PM;
-      } catch {}
-    }
-  }
-  return "npm";
+type Phase =
+  | "init"
+  | "ready"
+  | "need-token"
+  | "installing"
+  | "done"
+  | "fatal";
+
+type LogTone = "dim" | "ok" | "warn" | "err";
+
+type LogEntry = {
+  text: string;
+  tone: LogTone;
+};
+
+type Props = {
+  options: zod.infer<typeof options>;
+};
+
+function SetupLog({ entries }: { entries: LogEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {entries.map((entry, i) => {
+        const color =
+          entry.tone === "ok"
+            ? "green"
+            : entry.tone === "warn"
+              ? "yellow"
+              : entry.tone === "err"
+                ? "red"
+                : undefined;
+        return (
+          <Text key={`${i}-${entry.text}`} color={color} dimColor={entry.tone === "dim"}>
+            {entry.text}
+          </Text>
+        );
+      })}
+    </Box>
+  );
 }
 
-function installCommand(pm: PM): string {
-  switch (pm) {
-    case "pnpm":  return "pnpm install -g @icqqjs/icqq";
-    case "cnpm":  return "cnpm install -g @icqqjs/icqq";
-    case "yarn":  return "yarn global add @icqqjs/icqq";
-    default:      return "npm install -g @icqqjs/icqq";
-  }
+function TokenHelpPanel() {
+  return (
+    <Box
+      flexDirection="column"
+      gap={0}
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+      marginBottom={1}
+    >
+      <Text bold color="cyan">
+        {TOKEN_HELP.title}
+      </Text>
+      <Text>{TOKEN_HELP.intro}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {TOKEN_HELP.steps.map((line) => (
+          <Text key={line} wrap="wrap">
+            {line}
+          </Text>
+        ))}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>{TOKEN_HELP.alt}</Text>
+      </Box>
+    </Box>
+  );
 }
 
-export default function Setup() {
+export default function Setup({ options: cliOptions }: Props) {
   const { exit } = useApp();
-  const [step, setStep] = useState<Step>("check");
-  const [message, setMessage] = useState("");
+  const [phase, setPhase] = useState<Phase>("init");
+  const [pm, setPm] = useState<PackageManager>("npm");
   const [icqqPath, setIcqqPath] = useState<string | null>(null);
-  const [pm, setPm] = useState<PM>("npm");
+  const [activeToken, setActiveToken] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
+  const [retryNote, setRetryNote] = useState("");
+  const [fatalMessage, setFatalMessage] = useState("");
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const logsRef = useRef<LogEntry[]>([]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const detectedPM = detectPM();
-        setPm(detectedPM);
-
-        // 1. Check if already available
-        if (await isIcqqAvailable()) {
-          setIcqqPath(await getIcqqPath());
-          setStep("already");
-          setTimeout(exit, 0);
-          return;
-        }
-
-        // 2. Ensure @icqqjs scope in ~/.npmrc
-        setStep("npmrc");
-        const npmrcPath = path.join(homedir(), ".npmrc");
-        const scopeLine = "@icqqjs:registry=https://npm.pkg.github.com";
-        let npmrcContent = "";
-        if (existsSync(npmrcPath)) {
-          npmrcContent = readFileSync(npmrcPath, "utf-8");
-        }
-        if (!npmrcContent.includes("@icqqjs:registry")) {
-          appendFileSync(npmrcPath, `\n${scopeLine}\n`, "utf-8");
-        }
-
-        // 3. Install using the detected package manager
-        setStep("install");
-        const installCmd = installCommand(detectedPM);
-        try {
-          execSync(installCmd, {
-            stdio: "inherit",
-            timeout: 120_000,
-          });
-        } catch {
-          setMessage(
-            `安装失败（使用 ${detectedPM}）。可能需要先登录 GitHub Packages：\n\n` +
-            "  npm login --scope=@icqqjs --auth-type=legacy --registry=https://npm.pkg.github.com\n\n" +
-            "然后重新运行 icqq setup",
-          );
-          setStep("error");
-          setTimeout(() => exit(new Error("install failed")), 0);
-          return;
-        }
-
-        // 4. Verify
-        if (await isIcqqAvailable()) {
-          setStep("done");
-        } else {
-          setMessage("安装完成但仍无法加载 @icqqjs/icqq，请检查 Node.js 环境。");
-          setStep("error");
-        }
-        setTimeout(exit, 0);
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : String(e));
-        setStep("error");
-        setTimeout(() => exit(new Error("setup failed")), 0);
-      }
-    })();
+  const pushLog = useCallback((text: string, tone: LogTone = "dim") => {
+    const entry = { text, tone };
+    logsRef.current = [...logsRef.current, entry];
+    setLogs(logsRef.current);
   }, []);
 
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text bold>icqq setup — 安装 @icqqjs/icqq</Text>
+  const finish = useCallback(
+    (code?: number) => {
+      if (code) process.exitCode = code;
+      setTimeout(() => exit(), code ? 200 : 120);
+    },
+    [exit],
+  );
 
-      {step === "check" && <Text dimColor>检查依赖状态…（{pm}）</Text>}
-      {step === "already" && (
-        <Box flexDirection="column">
-          <Text color="green">✓ @icqqjs/icqq 已安装，无需额外操作。</Text>
-          {icqqPath && <Text dimColor>  路径: {icqqPath}</Text>}
-        </Box>
+  // 1–2：检测包管理器并查找已安装的 icqq
+  useEffect(() => {
+    if (phase !== "init") return;
+    void (async () => {
+      pushLog("① 检测包管理器 …");
+      const detected = detectPackageManager();
+      setPm(detected);
+      pushLog(`   → 将使用 ${detected}（与当前 icqq CLI 的安装方式一致）`, "ok");
+
+      pushLog("② 查找 @icqqjs/icqq …");
+      const found = await discoverIcqq((msg) => pushLog(msg));
+      if (found.found) {
+        const p = found.path ?? (await getIcqqPath());
+        setIcqqPath(p);
+        pushLog("   → 已可正常加载，跳过安装", "ok");
+        setPhase("ready");
+        return;
+      }
+
+      pushLog("③ 准备安装 …");
+      const preset = resolveSetupToken(cliOptions.token);
+      if (preset) {
+        if (cliOptions.token?.trim()) {
+          pushLog("   → Token 来源：命令行 --token", "ok");
+        } else if (process.env.GITHUB_TOKEN?.trim()) {
+          pushLog("   → Token 来源：环境变量 GITHUB_TOKEN", "ok");
+        } else {
+          pushLog("   → Token 来源：环境变量 ICQQ_GITHUB_TOKEN", "ok");
+        }
+        setActiveToken(preset);
+        setPhase("installing");
+      } else {
+        pushLog("   → 未提供 Token，需要交互输入（见下方获取说明）", "warn");
+        setPhase("need-token");
+      }
+    })();
+  }, [phase, cliOptions.token, pushLog]);
+
+  // 5–7：使用 token 全局安装
+  useEffect(() => {
+    if (phase !== "installing" || !activeToken) return;
+    void (async () => {
+      const installCmd = formatGithubInstallCommand(pm);
+      pushLog("④ 从 GitHub Packages 全局安装 …");
+      pushLog(`   → 执行：${installCmd}`);
+      pushLog("   → 认证：环境变量（不写入 ~/.npmrc）");
+      pushLog("   → 下方为包管理器输出：");
+      try {
+        runGithubPackagesGlobalInstall(pm, activeToken);
+        pushLog("   → 安装命令已结束", "ok");
+
+        pushLog("⑤ 验证能否加载 @icqqjs/icqq …");
+        if (await isIcqqAvailable()) {
+          const p = await getIcqqPath();
+          setIcqqPath(p);
+          pushLog(p ? `   → 验证通过（${p}）` : "   → 验证通过", "ok");
+          setPhase("done");
+          return;
+        }
+        pushLog("   → 验证失败：已安装但无法加载", "err");
+        setFatalMessage(
+          "安装命令已成功，但仍无法加载 @icqqjs/icqq。\n" +
+            "请确认使用与 icqq CLI 相同的全局包管理器，然后重新运行 icqq setup。",
+        );
+        setPhase("fatal");
+      } catch (e) {
+        if (e instanceof IcqqInstallError && e.kind === "auth") {
+          pushLog(`   → ${e.message}`, "warn");
+          pushLog("   → 将返回 Token 输入步骤", "warn");
+          setRetryNote(e.message);
+          setActiveToken("");
+          setTokenInput("");
+          setPhase("need-token");
+          return;
+        }
+        const msg =
+          e instanceof IcqqInstallError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        pushLog(`   → ${msg}`, "err");
+        setFatalMessage(
+          `${msg}\n\n可检查网络、包管理器是否可用，或稍后重试 icqq setup。`,
+        );
+        setPhase("fatal");
+      }
+    })();
+  }, [phase, pm, activeToken, pushLog]);
+
+  useEffect(() => {
+    if (phase === "ready" || phase === "done") finish();
+    if (phase === "fatal") finish(1);
+  }, [phase, finish]);
+
+  useInput(
+    (input, key) => {
+      if (phase !== "need-token") return;
+
+      if (key.return) {
+        const t = tokenInput.trim();
+        if (!t) {
+          pushLog("   → Token 为空，请重新输入", "warn");
+          return;
+        }
+        pushLog("   → 已接收 Token（交互输入）", "ok");
+        setRetryNote("");
+        setActiveToken(t);
+        setPhase("installing");
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setTokenInput((v) => v.slice(0, -1));
+        return;
+      }
+      if (key.ctrl && input === "c") {
+        pushLog("已取消", "warn");
+        finish(1);
+        return;
+      }
+      if (!key.ctrl && !key.meta && input) {
+        setTokenInput((v) => v + input);
+      }
+    },
+    { isActive: phase === "need-token" },
+  );
+
+  return (
+    <Box flexDirection="column" gap={1} paddingX={1}>
+      <Text bold>icqq setup</Text>
+
+      {phase === "need-token" ? (
+        <>
+          {retryNote && (
+            <Box marginBottom={1}>
+              <Text color="yellow">
+                ⚠ {retryNote}（请按下方说明重新获取或检查 Token 权限）
+              </Text>
+            </Box>
+          )}
+          <TokenHelpPanel />
+          <SetupLog entries={logs} />
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold>粘贴 Token：</Text>
+            <Box>
+              <Text color="cyan">❯ </Text>
+              <Text>
+                {"•".repeat(tokenInput.length)}
+                <Text color="cyan">█</Text>
+              </Text>
+            </Box>
+          </Box>
+        </>
+      ) : (
+        <SetupLog entries={logs} />
       )}
-      {step === "npmrc" && <Text dimColor>配置 ~/.npmrc …</Text>}
-      {step === "install" && <Text dimColor>使用 {pm} 安装 @icqqjs/icqq …</Text>}
-      {step === "done" && <Text color="green">✓ @icqqjs/icqq 安装完成！现在可以运行 icqq login 了。</Text>}
-      {step === "error" && <Text color="red">{message}</Text>}
+
+      {phase === "init" && <Text dimColor>进行中 …</Text>}
+
+      {phase === "ready" && (
+        <Text color="green">✓ 完成：@icqqjs/icqq 已可正常加载。</Text>
+      )}
+
+      {phase === "installing" && (
+        <Text dimColor>正在安装，请稍候 …</Text>
+      )}
+
+      {phase === "done" && (
+        <Text color="green">✓ 完成：可以运行 icqq login 了。</Text>
+      )}
+
+      {phase === "fatal" && <Text color="red">{fatalMessage}</Text>}
     </Box>
   );
 }

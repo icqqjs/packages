@@ -10,32 +10,30 @@ npm install -g @icqqjs/cli
 
 ### 安装 icqq 核心依赖
 
-CLI 的核心协议库 `@icqqjs/icqq` 托管在 GitHub Packages，首次使用需要额外安装：
+CLI 的核心协议库 `@icqqjs/icqq` 可能托管在 GitHub Packages（与发布在 npmjs 的 `@icqqjs/cli` 不同源）。**请勿**把 `@icqqjs:registry` 写入 `~/.npmrc`，否则两个包会冲突。
 
 ```bash
-# 一键安装（自动配置 .npmrc + 安装 icqq）
-icqq setup
+icqq setup                        # 交互引导（检测 → 输入 Token → 安装）
+icqq setup --token <PAT>          # 或预先提供 PAT
+export GITHUB_TOKEN=<PAT> && icqq setup
 ```
 
 <details>
-<summary>手动安装</summary>
+<summary>手动安装（不修改 ~/.npmrc）</summary>
 
-1. 配置 npm scope：
+公网 npm：
 
 ```bash
-echo '@icqqjs:registry=https://npm.pkg.github.com' >> ~/.npmrc
+pnpm add -g @icqqjs/icqq
+# 或 npm install -g @icqqjs/icqq
 ```
 
-2. 登录 GitHub Packages（需要具有 `read:packages` 权限的 [Personal Access Token](https://github.com/settings/tokens/new)）：
+GitHub Packages（将 `<PAT>` 换为 [Personal Access Token](https://github.com/settings/tokens/new)）：
 
 ```bash
-npm login --scope=@icqqjs --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-3. 安装：
-
-```bash
-npm install -g @icqqjs/icqq
+export GITHUB_TOKEN=<PAT>
+pnpm add -g @icqqjs/icqq --config.@icqqjs:registry=https://npm.pkg.github.com
+# npm: npm install -g @icqqjs/icqq --@icqqjs:registry=https://npm.pkg.github.com
 ```
 
 </details>
