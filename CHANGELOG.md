@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/icqqjs/cli/compare/v1.5.2...v1.5.3) (2026-05-28)
+
+
+### Bug Fixes
+
+* 更新setup 优化 ([046ba6f](https://github.com/icqqjs/cli/commit/046ba6fd0253aba436de3041daccf377603c9fd3))
+
 ## [1.5.2](https://github.com/icqqjs/cli/compare/v1.5.1...v1.5.2) (2026-05-22)
 
 
