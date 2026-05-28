@@ -6,6 +6,7 @@ import {
   buildAuthEnv,
   buildInstallExtraArgs,
   describeAuthCompat,
+  isWrongRegistry404,
   shouldFallbackToNpm,
   ICQQ_GITHUB_REGISTRY,
   GITHUB_PACKAGES_AUTH_KEY,
@@ -145,7 +146,7 @@ export async function discoverIcqq(
   return { found: false, path: onDisk };
 }
 
-/** 用于日志展示的安装命令（不含 Token） */
+/** 用于日志展示的安装命令（不含 Token，单行） */
 export function formatGithubInstallCommand(
   pm: PackageManager,
   options?: InstallInvocationOptions,
@@ -267,6 +268,9 @@ export function summarizeInstallFailure(
   kind: InstallFailureKind,
   detail: string,
 ): string {
+  if (isWrongRegistry404(detail)) {
+    return "安装失败：请求到了 npmjs.org 而非 GitHub Packages，请确认 @icqqjs scope registry 已生效。";
+  }
   if (kind === "auth") {
     return "认证失败：Token 无效、已过期或缺少 read:packages 权限。";
   }

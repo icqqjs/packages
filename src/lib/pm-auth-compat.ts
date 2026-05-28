@@ -2,19 +2,9 @@ import type { PackageManager } from "./package-manager.js";
 
 export const ICQQ_GITHUB_REGISTRY = "https://npm.pkg.github.com";
 export const GITHUB_PACKAGES_AUTH_KEY = "//npm.pkg.github.com/:_authToken";
-
-export type AuthCompatProfile = {
-  /** 日志用标识，如 pnpm11、npm10 */
-  id: string;
-  env: Record<string, string>;
-  /** 追加到 install 子命令后的 CLI 参数（token 用 ${GITHUB_TOKEN} 占位，由 env 注入） */
-  extraArgs: string[];
-};
-
-const AUTH_PLACEHOLDER = "${GITHUB_TOKEN}";
-const REGISTRY_SCOPE_ARG = `@icqqjs:registry=${ICQQ_GITHUB_REGISTRY}`;
-const PNPM_REGISTRY_CONFIG = `--config.${REGISTRY_SCOPE_ARG}`;
-const PNPM_AUTH_CONFIG = `--config.${GITHUB_PACKAGES_AUTH_KEY}=${AUTH_PLACEHOLDER}`;
+/** .npmrc / env 中的 scope registry 键名 */
+export const ICQQ_SCOPE_REGISTRY_KEY = "@icqqjs:registry";
+export const GITHUB_ALWAYS_AUTH_KEY = "//npm.pkg.github.com/:always-auth";
 
 function baseTokenEnv(token: string): Record<string, string> {
   return {
@@ -23,23 +13,35 @@ function baseTokenEnv(token: string): Record<string, string> {
   };
 }
 
-/** npm_config_*（pnpm 9–10、npm 8–11、cnpm 均适用） */
-function npmConfigAuthEnv(token: string): Record<string, string> {
+/** @icqqjs scope 指向 GitHub Packages（npm + pnpm 各一份 env） */
+function scopedRegistryEnv(): Record<string, string> {
   return {
-    [`npm_config_${GITHUB_PACKAGES_AUTH_KEY}`]: token,
+    [`npm_config_${ICQQ_SCOPE_REGISTRY_KEY}`]: ICQQ_GITHUB_REGISTRY,
+    [`pnpm_config_${ICQQ_SCOPE_REGISTRY_KEY}`]: ICQQ_GITHUB_REGISTRY,
   };
 }
 
-/** pnpm 11+ 读取 pnpm_config_*，不再读 npm_config_* 作为配置项（仍可同时设置以防混用） */
+/** npm_config_*（pnpm 9–10、npm 8–11、cnpm、yarn npm 子命令） */
+function npmConfigAuthEnv(token: string): Record<string, string> {
+  return {
+    ...scopedRegistryEnv(),
+    [`npm_config_${GITHUB_PACKAGES_AUTH_KEY}`]: token,
+    [`npm_config_${GITHUB_ALWAYS_AUTH_KEY}`]: "true",
+  };
+}
+
+/** pnpm 11+ 读取 pnpm_config_* */
 function pnpmConfigAuthEnv(token: string): Record<string, string> {
   return {
+    ...scopedRegistryEnv(),
     [`pnpm_config_${GITHUB_PACKAGES_AUTH_KEY}`]: token,
+    [`pnpm_config_${GITHUB_ALWAYS_AUTH_KEY}`]: "true",
   };
 }
 
 /**
- * 按包管理器主版本生成认证环境变量（合并策略，单次安装即可）。
- * major 为 null 时采用「全量兼容」：同时设置 npm_config 与 pnpm_config。
+ * 按包管理器主版本生成认证环境变量。
+ * 不依赖 `--config.${GITHUB_TOKEN}`：execFile 不会展开 shell 变量，会导致 401。
  */
 export function buildAuthEnv(
   pm: PackageManager,
@@ -64,10 +66,7 @@ export function buildAuthEnv(
     }
     case "npm":
     case "cnpm":
-      Object.assign(env, npmConfigAuthEnv(token));
-      break;
     case "yarn":
-      // Yarn 2+ 的 `yarn npm` 子命令走 npm 协议与 env
       Object.assign(env, npmConfigAuthEnv(token));
       break;
     default:
@@ -78,34 +77,32 @@ export function buildAuthEnv(
 }
 
 /**
- * 安装命令额外参数（registry + 可选 auth config）。
+ * 安装命令额外 CLI 参数。
+ * pnpm：registry + auth 仅用 env（见 buildAuthEnv），避免错误 --config 拼接。
+ * npm/cnpm/yarn：使用 npm 系 `--@icqqjs:registry=` 写法。
  */
 export function buildInstallExtraArgs(
   pm: PackageManager,
-  major: number | null,
+  _major: number | null,
 ): string[] {
+  const regFlag = `--${ICQQ_SCOPE_REGISTRY_KEY}=${ICQQ_GITHUB_REGISTRY}`;
   switch (pm) {
-    case "pnpm": {
-      const args = [PNPM_REGISTRY_CONFIG];
-      // pnpm 9+ 支持 --config.//host/:_authToken=${VAR}
-      if (major === null || major >= 9) {
-        args.push(PNPM_AUTH_CONFIG);
-      }
-      return args;
-    }
+    case "pnpm":
+      return [];
     case "cnpm":
-      return [`--${REGISTRY_SCOPE_ARG}`];
-    case "yarn": {
-      // Yarn 1 无稳定的不写配置全局 GitHub 安装路径，由 icqq-install 走 npm
-      if (major !== null && major >= 2) {
-        return [`--${REGISTRY_SCOPE_ARG}`];
-      }
-      return [`--${REGISTRY_SCOPE_ARG}`];
-    }
+    case "yarn":
     case "npm":
     default:
-      return [`--${REGISTRY_SCOPE_ARG}`];
+      return [regFlag];
   }
+}
+
+/** 日志用：展示将执行的命令（不含 token） */
+export function formatInstallCommandForLog(
+  pm: PackageManager,
+  baseArgs: string[],
+): string {
+  return [pm === "yarn" ? "yarn/npm" : pm, ...baseArgs].join(" ");
 }
 
 export function describeAuthCompat(pm: PackageManager, major: number | null): string {
@@ -113,20 +110,20 @@ export function describeAuthCompat(pm: PackageManager, major: number | null): st
   switch (pm) {
     case "pnpm":
       if (major !== null && major >= 11) {
-        return `pnpm@${ver}（pnpm_config + CLI config）`;
+        return `pnpm@${ver}（pnpm_config + npm_config env）`;
       }
       if (major !== null && major >= 9) {
-        return `pnpm@${ver}（npm_config + CLI config）`;
+        return `pnpm@${ver}（npm_config env）`;
       }
-      return `pnpm@${ver}（npm_config）`;
+      return `pnpm@${ver}（npm_config env）`;
     case "yarn":
       return major !== null && major === 1
         ? `yarn@${ver}（经 npm 安装）`
-        : `yarn@${ver}（yarn npm → npm 认证）`;
+        : `yarn@${ver}（yarn npm → npm env）`;
     case "cnpm":
-      return `cnpm@${ver}（npm_config）`;
+      return `cnpm@${ver}（npm_config env）`;
     default:
-      return `npm@${ver}（npm_config）`;
+      return `npm@${ver}（npm_config env）`;
   }
 }
 
@@ -136,4 +133,13 @@ export function shouldFallbackToNpm(
   kind: "auth" | "other",
 ): boolean {
   return kind === "auth" && primary !== "npm";
+}
+
+/** 404 且请求落在 npmjs → 多半是 scope registry 未生效 */
+export function isWrongRegistry404(detail: string): boolean {
+  return (
+    /404/.test(detail) &&
+    /registry\.npmjs\.org/i.test(detail) &&
+    /@icqqjs/i.test(detail)
+  );
 }

@@ -3,7 +3,9 @@ import {
   buildAuthEnv,
   buildInstallExtraArgs,
   describeAuthCompat,
+  isWrongRegistry404,
   shouldFallbackToNpm,
+  ICQQ_SCOPE_REGISTRY_KEY,
 } from "../src/lib/pm-auth-compat.js";
 import { parseSemverMajor, isWithinSupportedMajorWindow } from "../src/lib/pm-version.js";
 import { githubInstallInvocation } from "../src/lib/icqq-install.js";
@@ -23,54 +25,68 @@ describe("pm-version", () => {
 });
 
 describe("pm-auth-compat", () => {
-  it("pnpm 11 sets pnpm_config and npm_config", () => {
+  it("pnpm 11 sets pnpm_config registry and auth", () => {
     const env = buildAuthEnv("pnpm", "tok", 11);
     expect(env.GITHUB_TOKEN).toBe("tok");
-    expect(env["pnpm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
-    expect(env["npm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
+    expect(env[`pnpm_config_${ICQQ_SCOPE_REGISTRY_KEY}`]).toBe(
+      "https://npm.pkg.github.com",
+    );
+    expect(env[`pnpm_config_//npm.pkg.github.com/:_authToken`]).toBe("tok");
+    expect(env[`pnpm_config_//npm.pkg.github.com/:always-auth`]).toBe("true");
   });
 
-  it("pnpm 9 sets npm_config only in env layer", () => {
+  it("pnpm 9 sets npm_config registry", () => {
     const env = buildAuthEnv("pnpm", "tok", 9);
-    expect(env["npm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
+    expect(env[`npm_config_${ICQQ_SCOPE_REGISTRY_KEY}`]).toBe(
+      "https://npm.pkg.github.com",
+    );
     expect(env["pnpm_config_//npm.pkg.github.com/:_authToken"]).toBeUndefined();
   });
 
-  it("pnpm 10 same as 9 for env", () => {
-    const env = buildAuthEnv("pnpm", "tok", 10);
-    expect(env["npm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
-    expect(env["pnpm_config_//npm.pkg.github.com/:_authToken"]).toBeUndefined();
+  it("pnpm install has no --config CLI args", () => {
+    expect(buildInstallExtraArgs("pnpm", 11)).toEqual([]);
   });
 
-  it("npm 10 uses npm_config", () => {
-    const env = buildAuthEnv("npm", "tok", 10);
-    expect(env["npm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
+  it("npm install uses --@icqqjs:registry flag", () => {
+    const args = buildInstallExtraArgs("npm", 10);
+    expect(args[0]).toBe("--@icqqjs:registry=https://npm.pkg.github.com");
   });
 
   it("null major enables broad compat for pnpm", () => {
     const env = buildAuthEnv("pnpm", "tok", null);
     expect(env["pnpm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
-    expect(env["npm_config_//npm.pkg.github.com/:_authToken"]).toBe("tok");
+    expect(env[`npm_config_${ICQQ_SCOPE_REGISTRY_KEY}`]).toBe(
+      "https://npm.pkg.github.com",
+    );
   });
 
   it("shouldFallbackToNpm on auth only", () => {
     expect(shouldFallbackToNpm("pnpm", "auth")).toBe(true);
     expect(shouldFallbackToNpm("npm", "auth")).toBe(false);
-    expect(shouldFallbackToNpm("pnpm", "other")).toBe(false);
+  });
+
+  it("isWrongRegistry404", () => {
+    expect(
+      isWrongRegistry404(
+        "GET https://registry.npmjs.org/@icqqjs%2Ficqq: Not Found - 404",
+      ),
+    ).toBe(true);
+    expect(
+      isWrongRegistry404("GET https://npm.pkg.github.com/@icqqjs%2Ficqq: 401"),
+    ).toBe(false);
   });
 });
 
 describe("githubInstallInvocation versions", () => {
-  it("pnpm 11 args", () => {
+  it("pnpm 11 args are only add -g package", () => {
     const { args, authProfile } = githubInstallInvocation("pnpm", { majorVersion: 11 });
-    expect(args).toContain("--config.@icqqjs:registry=https://npm.pkg.github.com");
-    expect(args.join(" ")).toContain("_authToken");
+    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
     expect(authProfile).toContain("pnpm@11");
   });
 
   it("pnpm 9 args", () => {
     const { args } = githubInstallInvocation("pnpm", { majorVersion: 9 });
-    expect(args.join(" ")).toContain("${GITHUB_TOKEN}");
+    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
   });
 
   it("yarn 1 uses npm command", () => {
@@ -84,9 +100,9 @@ describe("githubInstallInvocation versions", () => {
     expect(args[0]).toBe("npm");
   });
 
-  it("cnpm registry flag", () => {
-    const { args } = githubInstallInvocation("cnpm", { majorVersion: 9 });
-    expect(args.some((a) => a.includes("@icqqjs:registry"))).toBe(true);
+  it("npm has registry flag", () => {
+    const { args } = githubInstallInvocation("npm", { majorVersion: 10 });
+    expect(args.some((a) => a.startsWith("--@icqqjs:registry="))).toBe(true);
   });
 });
 

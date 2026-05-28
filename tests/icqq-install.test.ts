@@ -7,11 +7,10 @@ import {
 } from "../src/lib/icqq-install.js";
 
 describe("icqq-install", () => {
-  it("github install sets scope registry and pnpm 11 auth config", () => {
+  it("github install pnpm uses env only (no broken --config placeholders)", () => {
     const { args } = githubInstallInvocation("pnpm", { majorVersion: 11 });
-    expect(args).toContain("--config.@icqqjs:registry=https://npm.pkg.github.com");
-    expect(args.some((a) => a.includes("_authToken"))).toBe(true);
-    expect(args.join(" ")).toContain("${GITHUB_TOKEN}");
+    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
+    expect(args.join(" ")).not.toContain("${GITHUB_TOKEN}");
   });
 
   it("classifies auth errors", () => {
