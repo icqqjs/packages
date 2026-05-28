@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,6 +9,20 @@ import {
 } from "../src/lib/icqq-resolve.js";
 
 describe("icqq-resolve", () => {
+  const envRestore: { key: string; value: string | undefined }[] = [];
+
+  afterEach(() => {
+    for (const { key, value } of envRestore.splice(0)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  function setEnv(key: string, value: string) {
+    envRestore.push({ key, value: process.env[key] });
+    process.env[key] = value;
+  }
+
   it("finds icqq in a fake global node_modules tree", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "icqq-resolve-"));
     const pkgDir = path.join(tmp, "node_modules", "@icqqjs", "icqq");
@@ -22,20 +36,23 @@ describe("icqq-resolve", () => {
       "export const createClient = () => ({});\n",
     );
 
-    const entry = resolveIcqqEntryPath([path.join(tmp, "node_modules")]);
+    const root = path.join(tmp, "node_modules");
+    const entry = resolveIcqqEntryPath([root]);
     expect(entry).toContain(path.join("@icqqjs", "icqq", "index.js"));
-    expect(resolveIcqqPackageRoot([path.join(tmp, "node_modules")])).toBe(pkgDir);
+    expect(resolveIcqqPackageRoot([root])).toBe(pkgDir);
 
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("collectGlobalNodeModulesRoots includes pnpm global when present", () => {
+  it("collectGlobalNodeModulesRoots includes pnpm global/5/node_modules under PNPM_HOME", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "icqq-resolve-pnpm-"));
+    const globalNm = path.join(tmp, "global", "5", "node_modules");
+    fs.mkdirSync(globalNm, { recursive: true });
+    setEnv("PNPM_HOME", tmp);
+
     const roots = collectGlobalNodeModulesRoots();
-    const pnpmGlobal = roots.find((r) =>
-      r.includes(`${path.sep}global${path.sep}`) && r.endsWith("node_modules"),
-    );
-    if (process.env.PNPM_HOME || fs.existsSync(path.join(os.homedir(), "Library", "pnpm", "global"))) {
-      expect(pnpmGlobal).toBeTruthy();
-    }
+    expect(roots).toContain(globalNm);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
