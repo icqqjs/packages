@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/icqqjs/cli/compare/v1.5.3...v1.5.4) (2026-05-28)
+
+
+### Bug Fixes
+
+* enhance GitHub install command with environment logging and improved error handling ([9bb1b97](https://github.com/icqqjs/cli/commit/9bb1b97fcbc35a315b2781853363bbf89bdcbf12))
+
 ## [1.5.3](https://github.com/icqqjs/cli/compare/v1.5.2...v1.5.3) (2026-05-28)
 
 
