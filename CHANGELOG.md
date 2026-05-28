@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.5](https://github.com/icqqjs/cli/compare/v1.5.4...v1.5.5) (2026-05-28)
+
+
+### Bug Fixes
+
+* update authentication logging and improve error handling for GitHub Packages installation ([3dd220a](https://github.com/icqqjs/cli/commit/3dd220a64ca363504f8339d6901c31d89551f786))
+
 ## [1.5.4](https://github.com/icqqjs/cli/compare/v1.5.3...v1.5.4) (2026-05-28)
 
 
