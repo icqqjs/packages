@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.6](https://github.com/icqqjs/cli/compare/v1.5.5...v1.5.6) (2026-05-29)
+
+
+### Bug Fixes
+
+* update version to 1.5.6 and add @inkjs/ui dependency ([736c3b7](https://github.com/icqqjs/cli/commit/736c3b7965db3b4fa0a6fafe27c54cf9fb5e30c4))
+
 ## [1.5.5](https://github.com/icqqjs/cli/compare/v1.5.4...v1.5.5) (2026-05-28)
 
 
