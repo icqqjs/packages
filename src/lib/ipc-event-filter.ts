@@ -56,3 +56,33 @@ export function guildMessageFromEventData(data: Record<string, unknown>): {
     time: Number(data.time ?? Math.floor(Date.now() / 1000)),
   };
 }
+
+/**
+ * 旧 subscribe(type, id) 的客户端过滤包装。
+ * 服务端每条连接只推送一次，多个 subscribe 回调需各自过滤，避免重复处理。
+ */
+export function wrapSubscribeEventHandler(
+  params: Record<string, unknown>,
+  onEvent: (event: IpcEvent) => void,
+): (event: IpcEvent) => void {
+  const type = params.type;
+  const idParam = params.id;
+
+  if (type === "private" || type === "group") {
+    const sessionId = Number(idParam);
+    if (Number.isFinite(sessionId) && sessionId > 0) {
+      return (event) => {
+        if (isChatMessageEvent(event, type, sessionId)) onEvent(event);
+      };
+    }
+  }
+
+  if (type === "guild" && idParam != null && idParam !== "") {
+    const channelId = String(idParam);
+    return (event) => {
+      if (isGuildChannelMessageEvent(event, channelId)) onEvent(event);
+    };
+  }
+
+  return onEvent;
+}

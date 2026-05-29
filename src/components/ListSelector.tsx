@@ -21,9 +21,12 @@ export type ListSelectorConfig<T, ID extends string | number = number> = {
 
 function SelectorList<T, ID extends string | number>({
   ipc,
+  ownConnection,
   config,
 }: {
   ipc: IpcClient;
+  /** 为 true 时选择后关闭连接（独立 ListSelector）；为 false 时复用父级连接 */
+  ownConnection: boolean;
   config: ListSelectorConfig<T, ID>;
 }) {
   const [items, setItems] = useState<T[]>([]);
@@ -41,7 +44,7 @@ function SelectorList<T, ID extends string | number>({
       } catch { /* ignore */ }
       setLoading(false);
     })();
-  }, [ipc, config.action]);
+  }, [ipc, config.action, config.params]);
 
   const lowerFilter = filter.toLowerCase();
   const filtered = filter
@@ -57,7 +60,7 @@ function SelectorList<T, ID extends string | number>({
     if (key.return) {
       const item = filtered[index];
       if (item) {
-        ipc.close();
+        if (ownConnection) ipc.close();
         config.onSelect(config.getId(item));
       }
       return;
@@ -91,7 +94,7 @@ function SelectorList<T, ID extends string | number>({
         {visible.map((item) => {
           const i = filtered.indexOf(item);
           return (
-            <Box key={config.getId(item)}>
+            <Box key={String(config.getId(item))}>
               {config.renderItem(item, i === index)}
             </Box>
           );
@@ -105,11 +108,31 @@ function SelectorList<T, ID extends string | number>({
   );
 }
 
-export function ListSelector<T, ID extends string | number = number>(props: ListSelectorConfig<T, ID>) {
+type ListSelectorProps<T, ID extends string | number = number> =
+  ListSelectorConfig<T, ID> & {
+    /** 传入则复用已有连接，选择后不会 close */
+    ipc?: IpcClient;
+  };
+
+function ListSelectorWithConnection<T, ID extends string | number = number>(
+  config: ListSelectorConfig<T, ID>,
+) {
   const { ipc, error } = useIpcConnection();
 
   if (error) return <Text color="red">✖ {error}</Text>;
   if (!ipc) return <Spinner label="连接守护进程…" />;
 
-  return <SelectorList ipc={ipc} config={props} />;
+  return <SelectorList ipc={ipc} ownConnection config={config} />;
+}
+
+export function ListSelector<T, ID extends string | number = number>(
+  props: ListSelectorProps<T, ID>,
+) {
+  const { ipc, ...config } = props;
+
+  if (ipc) {
+    return <SelectorList ipc={ipc} ownConnection={false} config={config} />;
+  }
+
+  return <ListSelectorWithConnection config={config} />;
 }

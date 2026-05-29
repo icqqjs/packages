@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { Text, useApp } from "ink";
+import React, { useState } from "react";
+import { Text } from "ink";
 import zod from "zod";
 import { argument } from "pastel";
 import { Spinner } from "@/components/Spinner.js";
 import { ChatSession } from "@/components/ChatSession.js";
 import { FriendSelector } from "@/components/Selectors.js";
-import { resolveUin } from "@/lib/config.js";
-import { IpcClient } from "@/lib/ipc-client.js";
-import { isDaemonRunning } from "@/daemon/lifecycle.js";
+import { useIpcConnection } from "@/lib/use-ipc-connection.js";
 
 export const description = "进入好友聊天模式";
 
@@ -25,30 +23,8 @@ type Props = {
 };
 
 export default function FriendChat({ args: [id] }: Props) {
-  const { exit } = useApp();
-  const [ipc, setIpc] = useState<IpcClient | null>(null);
+  const { ipc, error } = useIpcConnection();
   const [selectedId, setSelectedId] = useState<number | undefined>(id);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const uin = await resolveUin();
-        if (!(await isDaemonRunning(uin)))
-          throw new Error("守护进程未运行，请先执行 icqq login");
-
-        const client = await IpcClient.connect(uin);
-        setIpc(client);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-
-    return () => {
-      ipc?.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (error) {
     return <Text color="red">✖ {error}</Text>;
@@ -59,7 +35,7 @@ export default function FriendChat({ args: [id] }: Props) {
   }
 
   if (selectedId === undefined) {
-    return <FriendSelector onSelect={setSelectedId} />;
+    return <FriendSelector ipc={ipc} onSelect={setSelectedId} />;
   }
 
   return <ChatSession ipc={ipc} type="private" id={selectedId} />;

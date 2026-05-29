@@ -65,19 +65,14 @@ export function ChatSession({ ipc, type, id }: Props) {
     })();
   }, [ipc, type, id]);
 
-  // ── Subscribe to live messages ──
+  // ── Live messages（连接后服务端自动推送） ──
   useEffect(() => {
-    const sub = ipc.subscribe(
-      Actions.SUBSCRIBE,
-      { type, id },
-      (event: IpcEvent) => {
-        if (!isChatMessageEvent(event, type, id)) return;
-        const msg = chatMessageFromEventData(event.data as Record<string, unknown>);
-        setMessages((prev) => [...prev.slice(-100), msg]);
-        setShowHelp(false);
-      },
-    );
-    return () => { void sub.unsubscribe(); };
+    return ipc.onEvent((event: IpcEvent) => {
+      if (!isChatMessageEvent(event, type, id)) return;
+      const msg = chatMessageFromEventData(event.data as Record<string, unknown>);
+      setMessages((prev) => [...prev.slice(-100), msg]);
+      setShowHelp(false);
+    });
   }, [ipc, type, id]);
 
   // ── Mode hooks ──

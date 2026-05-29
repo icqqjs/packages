@@ -3,6 +3,7 @@ import {
   chatMessageFromEventData,
   isChatMessageEvent,
   isGuildChannelMessageEvent,
+  wrapSubscribeEventHandler,
 } from "../src/lib/ipc-event-filter.js";
 
 describe("isChatMessageEvent", () => {
@@ -71,5 +72,35 @@ describe("chatMessageFromEventData", () => {
     expect(msg.nickname).toBe("名片");
     expect(msg.content).toBe("hello");
     expect(msg.time).toBe(42);
+  });
+});
+
+describe("wrapSubscribeEventHandler", () => {
+  const privateMsg = {
+    id: "*",
+    event: "message.private.friend",
+    data: {
+      message_type: "private",
+      from_id: 100,
+      raw_message: "te",
+      time: 1,
+    },
+  };
+
+  it("only invokes matching session handler among multiple subscriptions", () => {
+    const hits: number[] = [];
+    const h100 = wrapSubscribeEventHandler(
+      { type: "private", id: 100 },
+      () => hits.push(100),
+    );
+    const h200 = wrapSubscribeEventHandler(
+      { type: "private", id: 200 },
+      () => hits.push(200),
+    );
+
+    h100(privateMsg);
+    h200(privateMsg);
+
+    expect(hits).toEqual([100]);
   });
 });

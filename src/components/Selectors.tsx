@@ -6,6 +6,9 @@ import React from "react";
 import { Text } from "ink";
 import { ListSelector } from "./ListSelector.js";
 import { Actions } from "@/daemon/protocol.js";
+import type { IpcClient } from "@/lib/ipc-client.js";
+
+type SelectorProps = { ipc?: IpcClient };
 
 // ── Friend ──
 
@@ -15,9 +18,13 @@ type FriendItem = {
   remark: string;
 };
 
-export function FriendSelector({ onSelect }: { onSelect: (uid: number) => void }) {
+export function FriendSelector({
+  ipc,
+  onSelect,
+}: SelectorProps & { onSelect: (uid: number) => void }) {
   return (
     <ListSelector<FriendItem>
+      ipc={ipc}
       action={Actions.LIST_FRIENDS}
       title="选择好友"
       loadingLabel="加载好友列表…"
@@ -45,9 +52,13 @@ type GroupItem = {
   member_count: number;
 };
 
-export function GroupSelector({ onSelect }: { onSelect: (gid: number) => void }) {
+export function GroupSelector({
+  ipc,
+  onSelect,
+}: SelectorProps & { onSelect: (gid: number) => void }) {
   return (
     <ListSelector<GroupItem>
+      ipc={ipc}
       action={Actions.LIST_GROUPS}
       title="选择群"
       loadingLabel="加载群列表…"
@@ -75,9 +86,14 @@ type MemberItem = {
   role: string;
 };
 
-export function MemberSelector({ gid, onSelect }: { gid: number; onSelect: (uid: number) => void }) {
+export function MemberSelector({
+  ipc,
+  gid,
+  onSelect,
+}: SelectorProps & { gid: number; onSelect: (uid: number) => void }) {
   return (
     <ListSelector<MemberItem>
+      ipc={ipc}
       action={Actions.LIST_GROUP_MEMBERS}
       params={{ gid }}
       title="选择成员"
@@ -106,9 +122,13 @@ type GuildItem = {
   guild_name: string;
 };
 
-export function GuildSelector({ onSelect }: { onSelect: (guildId: string) => void }) {
+export function GuildSelector({
+  ipc,
+  onSelect,
+}: SelectorProps & { onSelect: (guildId: string) => void }) {
   return (
     <ListSelector<GuildItem, string>
+      ipc={ipc}
       action={Actions.GUILD_LIST}
       title="选择频道"
       loadingLabel="加载频道列表…"
@@ -135,9 +155,14 @@ type ChannelItem = {
   channel_type: number;
 };
 
-export function ChannelSelector({ guildId, onSelect }: { guildId: string; onSelect: (channelId: string) => void }) {
+export function ChannelSelector({
+  ipc,
+  guildId,
+  onSelect,
+}: SelectorProps & { guildId: string; onSelect: (channelId: string) => void }) {
   return (
     <ListSelector<ChannelItem, string>
+      ipc={ipc}
       action={Actions.GUILD_CHANNELS}
       params={{ guild_id: guildId }}
       title="选择子频道"

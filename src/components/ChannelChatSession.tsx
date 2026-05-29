@@ -36,19 +36,13 @@ export function ChannelChatSession({ ipc, guildId, channelId, channelName }: Pro
   const [mode, setMode] = useState<Mode>("chat");
   const [showHelp, setShowHelp] = useState(true);
 
-  // Subscribe to guild channel messages
   useEffect(() => {
-    const sub = ipc.subscribe(
-      Actions.SUBSCRIBE,
-      { type: "guild", id: channelId },
-      (event: IpcEvent) => {
-        if (!isGuildChannelMessageEvent(event, channelId)) return;
-        const msg = guildMessageFromEventData(event.data as Record<string, unknown>);
-        setMessages((prev) => [...prev.slice(-100), msg]);
-        setShowHelp(false);
-      },
-    );
-    return () => { void sub.unsubscribe(); };
+    return ipc.onEvent((event: IpcEvent) => {
+      if (!isGuildChannelMessageEvent(event, channelId)) return;
+      const msg = guildMessageFromEventData(event.data as Record<string, unknown>);
+      setMessages((prev) => [...prev.slice(-100), msg]);
+      setShowHelp(false);
+    });
   }, [ipc, channelId]);
 
   const emoji = useEmojiMode();

@@ -16,7 +16,10 @@ import {
   getMcpEndpointPath,
 } from "@/lib/paths.js";
 import { McpHost } from "@/mcp/host.js";
-import { sendNotification } from "@/lib/notify.js";
+import {
+  DaemonContext,
+  initDaemonContext,
+} from "./daemon-context.js";
 import { DaemonServer } from "./server.js";
 
 async function main() {
@@ -69,7 +72,9 @@ async function main() {
 
   // Start IPC + optional RPC server
   const rpcConfig = resolveRpcConfig(config.rpc);
-  const server = new DaemonServer(client, uin, ipcToken, rpcConfig);
+  const ctx = await DaemonContext.fromClient(client, uin);
+  initDaemonContext(ctx);
+  const server = new DaemonServer(ctx, ipcToken, rpcConfig);
   await server.start();
   console.log(
     `[daemon] 账号 ${uin} 已上线, socket: ${getSocketPath(uin)}`,
@@ -165,9 +170,7 @@ async function main() {
           client.once("system.login.error", (e: { message: string }) => { clearTimeout(timer); reject(new Error(e.message)); });
         });
         console.log(`[daemon] 重连成功`);
-        if (config.notifyEnabled) {
-          sendNotification({ title: "icqq", body: "网络已恢复，重连成功" });
-        }
+        ctx.notifications.notifyReconnectSuccess();
         reconnecting = false;
         return;
       } catch (e) {
@@ -175,50 +178,28 @@ async function main() {
       }
     }
     console.log(`[daemon] ${maxRetries} 次重连均失败，放弃重连`);
-    if (config.notifyEnabled) {
-      sendNotification({ title: "icqq", body: `重连失败，请手动执行 icqq login -r` });
-    }
+    ctx.notifications.notifyReconnectFailed();
     reconnecting = false;
   };
 
   client.on("system.offline.network", (e: { message: string }) => {
     console.log("[daemon] 网络掉线:", e.message);
-    if (config.notifyEnabled) {
-      sendNotification({ title: "icqq", body: `网络掉线: ${e.message}` });
-    }
+    ctx.notifications.notifyOfflineNetwork(e.message);
     void autoReconnect();
   });
   client.on("system.offline.kickoff", (e: { message: string }) => {
     console.log("[daemon] 被踢下线:", e.message);
-    if (config.notifyEnabled) {
-      sendNotification({ title: "icqq", body: `被踢下线: ${e.message}` });
-    }
+    ctx.notifications.notifyOfflineKickoff(e.message);
   });
 
-  // Friend & group request notifications
   client.on("request.friend.add", (e: { nickname: string; user_id: number; comment?: string }) => {
-    if (config.notifyEnabled) {
-      sendNotification({
-        title: "icqq · 好友请求",
-        body: `${e.nickname}(${e.user_id}) 请求添加好友${e.comment ? `: ${e.comment}` : ""}`,
-      });
-    }
+    ctx.notifications.notifyFriendRequest(e);
   });
   client.on("request.group.invite", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number }) => {
-    if (config.notifyEnabled) {
-      sendNotification({
-        title: "icqq · 群邀请",
-        body: `${e.nickname ?? e.user_id} 邀请你加入群 ${e.group_name ?? e.group_id}`,
-      });
-    }
+    ctx.notifications.notifyGroupInvite(e);
   });
   client.on("request.group.add", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number; comment?: string }) => {
-    if (config.notifyEnabled) {
-      sendNotification({
-        title: "icqq · 入群申请",
-        body: `${e.nickname ?? e.user_id} 申请加入群 ${e.group_name ?? e.group_id}${e.comment ? `: ${e.comment}` : ""}`,
-      });
-    }
+    ctx.notifications.notifyGroupJoinRequest(e);
   });
 }
 

@@ -22,6 +22,7 @@ import type {
   IpcEvent,
   IpcMessage,
 } from "@/daemon/protocol.js";
+import { wrapSubscribeEventHandler } from "@/lib/ipc-event-filter.js";
 
 export class IpcClient {
   private socket: net.Socket;
@@ -46,7 +47,8 @@ export class IpcClient {
   }
 
   /** 注册数据处理 handler（RPC 模式延迟到 challenge 完成后调用） */
-  private attachDataHandler() {
+  private attachDataHandler(initialBuffer = "") {
+    this.buffer = initialBuffer;
     this.socket.on("data", (chunk) => this.onData(chunk.toString()));
   }
 
@@ -103,6 +105,7 @@ export class IpcClient {
     });
 
     // Wait for challenge from server, with proper buffering for TCP fragmentation
+    let challengeRemainder = "";
     const challenge = await new Promise<string>((resolve, reject) => {
       let challengeBuffer = "";
       const timeout = setTimeout(() => {
@@ -114,10 +117,11 @@ export class IpcClient {
       const onData = (chunk: Buffer) => {
         challengeBuffer += chunk.toString();
         const nlIdx = challengeBuffer.indexOf("\n");
-        if (nlIdx === -1) return; // 等待更多数据
+        if (nlIdx === -1) return;
 
         clearTimeout(timeout);
         client.socket.removeListener("data", onData);
+        challengeRemainder = challengeBuffer.slice(nlIdx + 1);
 
         try {
           const msg = JSON.parse(challengeBuffer.slice(0, nlIdx)) as {
@@ -135,8 +139,7 @@ export class IpcClient {
       client.socket.on("data", onData);
     });
 
-    // Challenge 阶段结束，注册正式的数据处理 handler
-    client.attachDataHandler();
+    client.attachDataHandler(challengeRemainder);
 
     // Compute HMAC digest and authenticate
     const digest = createHmac("sha256", token)
@@ -189,8 +192,9 @@ export class IpcClient {
       try {
         const msg = JSON.parse(line) as IpcMessage;
         if ("event" in msg) {
-          const handler = this.eventHandlers.get(msg.id);
-          handler?.(msg as IpcEvent);
+          for (const handler of this.eventHandlers.values()) {
+            handler(msg as IpcEvent);
+          }
         } else {
           const p = this.pending.get(msg.id);
           if (p) {
@@ -240,29 +244,34 @@ export class IpcClient {
   }
 
   /**
-   * 订阅 icqq 事件推送。
-   * params 可留空；服务端推送 client 经 em() 分发的全部事件，由 onEvent 自行过滤。
+   * 注册 icqq 事件回调。认证连接后服务端自动推送，断开连接后停止。
+   * 每条连接只需注册一次；自行在回调里按 event/data 过滤。
+   * @returns 取消注册的函数
+   */
+  onEvent(onEvent: (event: IpcEvent) => void): () => void {
+    const id = randomUUID();
+    this.eventHandlers.set(id, onEvent);
+    return () => {
+      this.eventHandlers.delete(id);
+    };
+  }
+
+  /**
+   * @deprecated 使用 {@link onEvent}。服务端不再维护多条 subscribe，认证后自动推送。
+   * 若传入 type/id，仅在客户端按会话过滤（兼容旧调用方式，不会重复推送）。
    */
   subscribe(
-    action: string,
+    _action: string,
     params: Record<string, unknown> = {},
     onEvent: (event: IpcEvent) => void,
   ): { id: string; unsubscribe: () => Promise<void> } {
+    const wrapped = wrapSubscribeEventHandler(params, onEvent);
+    const off = this.onEvent(wrapped);
     const id = randomUUID();
-    this.eventHandlers.set(id, onEvent);
-    const req: IpcRequest = { id, action, params };
-    this.socket.write(JSON.stringify(req) + "\n");
-
     return {
       id,
       unsubscribe: async () => {
-        this.eventHandlers.delete(id);
-        const unsub: IpcRequest = {
-          id: randomUUID(),
-          action: "unsubscribe",
-          params: { reqId: id },
-        };
-        this.socket.write(JSON.stringify(unsub) + "\n");
+        off();
       },
     };
   }

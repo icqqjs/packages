@@ -4,8 +4,8 @@ import { resolveUin } from "./config.js";
 import { isDaemonRunning } from "@/daemon/lifecycle.js";
 
 /**
- * Connect to the daemon IPC. Returns { ipc, error }.
- * Caller is responsible for closing the IpcClient when done.
+ * 连接守护进程 IPC。
+ * 默认在组件卸载时自动 close（避免连接泄漏）。
  */
 export function useIpcConnection(): {
   ipc: IpcClient | null;
@@ -22,13 +22,12 @@ export function useIpcConnection(): {
 
     void (async () => {
       try {
-        const uin = await resolveUin();
-        if (!closed) setUin(uin);
-        if (!(await isDaemonRunning(uin)))
-          throw new Error(
-            "守护进程未运行\n  请先运行: icqq login",
-          );
-        client = await IpcClient.connect(uin);
+        const resolvedUin = await resolveUin();
+        if (!closed) setUin(resolvedUin);
+        if (!(await isDaemonRunning(resolvedUin))) {
+          throw new Error("守护进程未运行\n  请先运行: icqq login");
+        }
+        client = await IpcClient.connect(resolvedUin);
         if (!closed) setIpc(client);
         else client.close();
       } catch (e) {
@@ -38,7 +37,7 @@ export function useIpcConnection(): {
 
     return () => {
       closed = true;
-      // Don't auto-close here; caller decides when to close
+      client?.close();
     };
   }, []);
 

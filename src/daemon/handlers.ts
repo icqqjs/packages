@@ -1,5 +1,6 @@
 import type { Client } from "@icqqjs/icqq";
 import { Actions, type IpcRequest, type IpcResponse } from "./protocol.js";
+import { tryGetDaemonContext } from "./daemon-context.js";
 import { parseMessage, stringifyMessage } from "@/lib/parse-message.js";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -83,6 +84,37 @@ const handlers: Record<string, Handler> = {
     groupCount: client.gl.size,
     blacklistCount: client.blacklist.size,
   }),
+
+  // ── 守护进程配置（需 DaemonContext） ──
+  [Actions.SET_WEBHOOK]: async (_client, params) => {
+    const ctx = tryGetDaemonContext();
+    if (!ctx) throw new Error("守护进程未就绪");
+    const url = (params.url as string) ?? "";
+    const err = await ctx.setWebhookUrl(url);
+    if (err) throw new Error(err);
+    return { webhookUrl: url || null };
+  },
+
+  [Actions.GET_WEBHOOK]: async () => {
+    const ctx = tryGetDaemonContext();
+    if (!ctx) throw new Error("守护进程未就绪");
+    const url = ctx.getWebhookUrl();
+    return { webhookUrl: url || null };
+  },
+
+  [Actions.SET_NOTIFY]: async (_client, params) => {
+    const ctx = tryGetDaemonContext();
+    if (!ctx) throw new Error("守护进程未就绪");
+    const enabled = params.enabled !== false;
+    await ctx.setNotifyEnabled(enabled);
+    return { notifyEnabled: enabled };
+  },
+
+  [Actions.GET_NOTIFY]: async () => {
+    const ctx = tryGetDaemonContext();
+    if (!ctx) throw new Error("守护进程未就绪");
+    return { notifyEnabled: ctx.notifications.isEnabled() };
+  },
 
   // ── 列表 ──
   [Actions.LIST_FRIENDS]: async (client) =>
