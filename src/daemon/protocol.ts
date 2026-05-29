@@ -57,7 +57,7 @@ export type IpcMessage = IpcResponse | IpcEvent;
  *   - user_id / uid: QQ 号
  *   - group_id / gid: 群号
  *   - message_id / msgid: 消息 ID
- *   - message: CQ 码格式消息文本（见 parse-message.ts）
+ *   - message: CQ 码字符串，或 MessageElem[]（JSON 数组）
  */
 export const Actions = {
   /** 心跳检测，返回 { pong: true, time } */
@@ -97,9 +97,9 @@ export const Actions = {
   GET_SELF_PROFILE: "get_self_profile",
 
   // ── 消息发送 ──
-  /** 发送私聊消息。参数: user_id, message */
+  /** 发送私聊消息。参数: user_id, message（string 或 MessageElem[]） */
   SEND_PRIVATE_MSG: "send_private_msg",
-  /** 发送群消息。参数: group_id, message */
+  /** 发送群消息。参数: group_id, message（string 或 MessageElem[]） */
   SEND_GROUP_MSG: "send_group_msg",
 
   // ── 消息操作 ──

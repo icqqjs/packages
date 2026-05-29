@@ -1,7 +1,7 @@
 import type { Client } from "@icqqjs/icqq";
 import { Actions, type IpcRequest, type IpcResponse } from "./protocol.js";
 import { tryGetDaemonContext } from "./daemon-context.js";
-import { parseMessage, stringifyMessage } from "@/lib/parse-message.js";
+import { parseMessage, stringifyMessage, resolveSendable } from "@/lib/parse-message.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -179,12 +179,12 @@ const handlers: Record<string, Handler> = {
 
   // ── 消息发送 ──
   [Actions.SEND_PRIVATE_MSG]: async (client, params) => {
-    const message = parseMessage(requireString(params, "message"));
+    const message = resolveSendable(params, "message");
     return await client.pickFriend(uid(params)).sendMsg(message);
   },
 
   [Actions.SEND_GROUP_MSG]: async (client, params) => {
-    const message = parseMessage(requireString(params, "message"));
+    const message = resolveSendable(params, "message");
     return await client.pickGroup(gid(params)).sendMsg(message);
   },
 
@@ -576,7 +576,7 @@ const handlers: Record<string, Handler> = {
 
   [Actions.SEND_TEMP_MSG]: async (client, params) => {
     const g = gid(params);
-    const message = parseMessage(requireString(params, "message"));
+    const message = resolveSendable(params, "message");
     return await client.sendTempMsg(g, uid(params), message);
   },
 
@@ -665,7 +665,7 @@ const handlers: Record<string, Handler> = {
   [Actions.GUILD_SEND_MSG]: async (client, params) => {
     const guildId = requireString(params, "guild_id");
     const channelId = requireString(params, "channel_id");
-    const message = parseMessage(requireString(params, "message"));
+    const message = resolveSendable(params, "message");
     return await client.sendGuildMsg(guildId, channelId, message);
   },
 

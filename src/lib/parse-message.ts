@@ -8,8 +8,10 @@
  *   [at:all]           @全体
  *   [dice]             骰子
  *   [rps]              猜拳
+ *   [reply:message_id] 引用回复（须写在 message 字符串内，通常放在开头）
  *
  * parseMessage: 文本 → Sendable
+ * resolveSendable: IPC params.message（string | MessageElem[]）→ Sendable
  * stringifyMessage: MessageElem[] → CQ 码文本
  */
 
@@ -18,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { FACE_MAP } from "../components/chat/useEmojiMode.js";
 
-const TAG_RE = /\[(face|image|at|dice|rps)(?::([^\]]*))?\]/g;
+const TAG_RE = /\[(face|image|at|dice|rps|reply)(?::([^\]]*))?\]/g;
 
 // ── Face ID → Emoji lookup ──
 const FACE_EMOJI_MAP = new Map<number, string>();
@@ -27,7 +29,7 @@ for (const [id, name] of FACE_MAP) {
   FACE_EMOJI_MAP.set(id, emoji);
 }
 
-const DISPLAY_RE = /\[(face|image|flash|record|video|bface|share|poke|json|xml|file|dice|rps|markdown)(?::([^\]]*))?\]/g;
+const DISPLAY_RE = /\[(face|image|flash|record|video|bface|share|poke|json|xml|file|dice|rps|reply|markdown)(?::([^\]]*))?\]/g;
 
 /** 生成 OSC 8 终端超链接（支持 iTerm2/Kitty/WezTerm/Windows Terminal 等） */
 export function termLink(label: string, url: string): string {
@@ -62,6 +64,8 @@ export function renderDisplayMessage(raw: string): string {
         return "[骰子·不支持查看]";
       case "rps":
         return "[猜拳·不支持查看]";
+      case "reply":
+        return value ? `[引用:${value}]` : "[引用]";
       case "bface":
         return value ? `[${value}]` : "[表情]";
       case "share":
@@ -134,6 +138,9 @@ export function parseMessage(raw: string): string | (string | MessageElem)[] {
       case "rps":
         parts.push({ type: "rps" } as MessageElem);
         break;
+      case "reply":
+        parts.push({ type: "reply", id: value ?? "" } as MessageElem);
+        break;
     }
 
     last = m.index! + m[0].length;
@@ -147,6 +154,72 @@ export function parseMessage(raw: string): string | (string | MessageElem)[] {
     return parts[0];
   }
   return parts.length === 0 ? raw : parts;
+}
+
+export type Sendable = string | MessageElem | (string | MessageElem)[];
+
+/**
+ * 解析 IPC 发消息参数：支持 CQ 字符串或 MessageElem[]（JSON 数组）。
+ * icqq sendMsg 原生接受 Sendable，此前仅因 handler 强制 string 而未暴露数组形态。
+ */
+export function resolveSendable(
+  params: Record<string, unknown>,
+  key = "message",
+): Sendable {
+  const raw = params[key];
+  if (raw === undefined || raw === null) {
+    throw new Error(`缺少参数: ${key}`);
+  }
+  if (typeof raw === "string") {
+    return parseMessage(raw);
+  }
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) {
+      throw new Error(`参数 ${key} 不能为空数组`);
+    }
+    return raw.map(normalizeMessagePart);
+  }
+  throw new Error(`参数 ${key} 须为 string 或 MessageElem[]`);
+}
+
+function normalizeMessagePart(item: unknown): string | MessageElem {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object" || !("type" in item)) {
+    throw new Error("message 数组项须为 string 或含 type 的对象");
+  }
+
+  const elem = item as Record<string, unknown>;
+  const type = elem.type;
+  if (typeof type !== "string") {
+    throw new Error("message 数组项缺少 type");
+  }
+
+  switch (type) {
+    case "text":
+      return String(elem.text ?? "");
+    case "face":
+      return { type: "face", id: Number(elem.id) };
+    case "at":
+      return {
+        type: "at",
+        qq: elem.qq === "all" ? "all" : Number(elem.qq),
+      } as MessageElem;
+    case "image": {
+      const file = String(elem.file ?? elem.url ?? "");
+      return {
+        type: "image",
+        file: file && isLocalPath(file) ? fileToBase64(file) : file,
+      };
+    }
+    case "reply":
+      return { type: "reply", id: String(elem.id ?? "") } as MessageElem;
+    case "dice":
+      return { type: "dice" } as MessageElem;
+    case "rps":
+      return { type: "rps" } as MessageElem;
+    default:
+      return elem as MessageElem;
+  }
 }
 
 /** 将 icqq 的 MessageElem 数组编码为 CQ 码文本 */
@@ -171,6 +244,8 @@ export function stringifyMessage(elems: MessageElem[]): string {
           return `[video:${(e as any).url ?? (e as any).file}]`;
         case "rps":
           return `[rps]`;
+        case "reply":
+          return `[reply:${(e as { id?: string }).id ?? ""}]`;
         case "dice":
           return `[dice]`;
         case "bface":

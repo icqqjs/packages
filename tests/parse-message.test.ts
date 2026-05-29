@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMessage, stringifyMessage } from "../src/lib/parse-message.ts";
+import { parseMessage, stringifyMessage, resolveSendable } from "../src/lib/parse-message.ts";
 
 describe("parseMessage", () => {
   it("returns plain text for simple strings", () => {
@@ -19,6 +19,14 @@ describe("parseMessage", () => {
   it("parses at:all", () => {
     const result = parseMessage("[at:all]");
     expect(result).toEqual([{ type: "at", qq: "all" }]);
+  });
+
+  it("parses reply tag", () => {
+    const result = parseMessage("[reply:abc123] 收到");
+    expect(result).toEqual([
+      { type: "reply", id: "abc123" },
+      " 收到",
+    ]);
   });
 
   it("parses dice and rps", () => {
@@ -47,6 +55,35 @@ describe("parseMessage", () => {
   });
 });
 
+describe("resolveSendable", () => {
+  it("accepts CQ string like parseMessage", () => {
+    expect(resolveSendable({ message: "hello" })).toBe("hello");
+  });
+
+  it("accepts MessageElem array for reply", () => {
+    expect(
+      resolveSendable({
+        message: [
+          { type: "reply", id: "msg-1" },
+          { type: "text", text: "收到" },
+        ],
+      }),
+    ).toEqual([{ type: "reply", id: "msg-1" }, "收到"]);
+  });
+
+  it("accepts mixed string and elem in array", () => {
+    expect(
+      resolveSendable({
+        message: [{ type: "at", qq: 123 }, " hi"],
+      }),
+    ).toEqual([{ type: "at", qq: 123 }, " hi"]);
+  });
+
+  it("rejects missing message", () => {
+    expect(() => resolveSendable({})).toThrow("缺少参数");
+  });
+});
+
 describe("stringifyMessage", () => {
   it("converts text elements", () => {
     expect(stringifyMessage([{ type: "text", text: "hello" } as any])).toBe("hello");
@@ -63,6 +100,12 @@ describe("stringifyMessage", () => {
 
   it("converts image elements", () => {
     expect(stringifyMessage([{ type: "image", url: "https://x.com/a.png" } as any])).toBe("[image:https://x.com/a.png]");
+  });
+
+  it("converts reply elements", () => {
+    expect(stringifyMessage([{ type: "reply", id: "msg-1" } as any])).toBe(
+      "[reply:msg-1]",
+    );
   });
 
   it("converts dice and rps", () => {
