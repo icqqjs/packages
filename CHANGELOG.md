@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.7](https://github.com/icqqjs/cli/compare/v1.5.6...v1.5.7) (2026-05-29)
+
+
+### Bug Fixes
+
+* simplify IPC connection handling and update chat components to use new connection logic ([99b73f9](https://github.com/icqqjs/cli/commit/99b73f95b9421419203afe25194b6bc7cf45b160))
+
 ## [1.5.6](https://github.com/icqqjs/cli/compare/v1.5.5...v1.5.6) (2026-05-29)
 
 
