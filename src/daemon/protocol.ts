@@ -263,9 +263,9 @@ export const Actions = {
   GFS_UPLOAD: "gfs_upload",
 
   // ── 群消息表态 ──
-  /** 给群消息添加表态。参数: group_id, seq, id */
+  /** 给群消息添加表态。参数: message_id, id */
   GROUP_SET_REACTION: "group_set_reaction",
-  /** 取消群消息表态。参数: group_id, seq, id */
+  /** 取消群消息表态。参数: message_id, id */
   GROUP_DEL_REACTION: "group_del_reaction",
 
   // ── 转发消息 ──

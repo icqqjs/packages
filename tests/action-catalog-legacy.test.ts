@@ -2,7 +2,47 @@ import { describe, expect, it, vi } from "vitest";
 import { Actions } from "../src/daemon/protocol.js";
 import { getActionCatalogEntry } from "../src/daemon/action-catalog.js";
 
+function makeGroupMessageId(groupId: number, userId: number, seq: number): string {
+  const buf = Buffer.allocUnsafe(21);
+  buf.writeUInt32BE(groupId);
+  buf.writeUInt32BE(userId, 4);
+  buf.writeUInt32BE(seq, 8);
+  buf.writeUInt32BE(123456, 12);
+  buf.writeUInt32BE(1717000000, 16);
+  buf.writeUInt8(1, 20);
+  return buf.toString("base64");
+}
+
 describe("legacy action catalog entries", () => {
+  it("derives group reaction target from message_id", async () => {
+    const setReaction = vi.fn(async (seq: number, id: string) => ({ seq, id, op: "set" }));
+    const delReaction = vi.fn(async (seq: number, id: string) => ({ seq, id, op: "del" }));
+    const pickGroup = vi.fn(() => ({ setReaction, delReaction }));
+    const messageId = makeGroupMessageId(9, 10001, 321);
+    const client = {
+      pickGroup,
+    } as unknown as import("@icqqjs/icqq").Client;
+
+    await expect(
+      getActionCatalogEntry(Actions.GROUP_SET_REACTION)?.execute(client, {
+        message_id: messageId,
+        id: "128077",
+      }),
+    ).resolves.toEqual({ seq: 321, id: "128077", op: "set" });
+    await expect(
+      getActionCatalogEntry(Actions.GROUP_DEL_REACTION)?.execute(client, {
+        message_id: messageId,
+        id: "128077",
+      }),
+    ).resolves.toEqual({ seq: 321, id: "128077", op: "del" });
+
+    expect(pickGroup).toHaveBeenCalledTimes(2);
+    expect(pickGroup).toHaveBeenNthCalledWith(1, 9);
+    expect(pickGroup).toHaveBeenNthCalledWith(2, 9);
+    expect(setReaction).toHaveBeenCalledWith(321, "128077");
+    expect(delReaction).toHaveBeenCalledWith(321, "128077");
+  });
+
   it("executes legacy list and info actions through the canonical catalog", async () => {
     const getGroupInfo = vi.fn(async () => ({ group_id: 9, group_name: "群" }));
     const getGroupMemberInfo = vi.fn(async () => ({ user_id: 2, nickname: "成员" }));

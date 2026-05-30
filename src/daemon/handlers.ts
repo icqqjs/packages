@@ -2,7 +2,8 @@ import type { Client } from "@icqqjs/icqq";
 import { Actions, type IpcRequest, type IpcResponse } from "./protocol.js";
 import { tryGetDaemonContext } from "./daemon-context.js";
 import { getActionCatalogEntry } from "./action-catalog.js";
-import { parseMessage, resolveSendable } from "@/lib/parse-message.js";
+import { resolveSendable } from "@/lib/parse-message.js";
+import { resolveIcqq } from "@/lib/icqq-resolve.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -10,6 +11,94 @@ type Handler = (
   client: Client,
   params: Record<string, unknown>,
 ) => Promise<unknown>;
+
+type GroupReactionTarget = {
+  groupId: number;
+  seq: number;
+};
+
+type SystemMessageRecord = {
+  request_type?: string;
+  sub_type?: string;
+  user_id?: number;
+  nickname?: string;
+  group_id?: number;
+  group_name?: string;
+  comment?: string;
+  flag?: string;
+  seq?: number;
+  time?: number;
+};
+
+type NormalizedSystemMessage = {
+  type: string;
+  user_id?: number;
+  nickname?: string;
+  group_id?: number;
+  group_name?: string;
+  comment?: string;
+  flag?: string;
+  seq?: number;
+  time?: number;
+};
+
+type GfsInstance = ReturnType<Client["acquireGfs"]>;
+type GfsDirEntry = Awaited<ReturnType<GfsInstance["dir"]>>[number];
+type GfsForwardPayload = Parameters<GfsInstance["forward"]>[0];
+type ForwardMessagesInput = Parameters<Client["makeForwardMsg"]>[0];
+type FriendImageElement = Parameters<ReturnType<Client["pickFriend"]>["getPicUrl"]>[0];
+type FriendPttElement = Parameters<ReturnType<Client["pickFriend"]>["getPttUrl"]>[0];
+
+function normalizeSystemMessage(item: unknown): NormalizedSystemMessage {
+  if (!item || typeof item !== "object") {
+    return { type: "unknown" };
+  }
+
+  const message = item as SystemMessageRecord;
+  return {
+    type: message.request_type ?? message.sub_type ?? "unknown",
+    user_id: message.user_id,
+    nickname: message.nickname,
+    group_id: message.group_id,
+    group_name: message.group_name,
+    comment: message.comment,
+    flag: message.flag,
+    seq: message.seq,
+    time: message.time,
+  };
+}
+
+function normalizeGfsDirEntry(entry: GfsDirEntry) {
+  return {
+    fid: entry.fid,
+    name: entry.name,
+    pid: entry.pid,
+    is_dir: entry.is_dir ?? !("md5" in entry),
+    size: "size" in entry ? entry.size : undefined,
+    upload_time: "upload_time" in entry ? entry.upload_time : entry.create_time,
+    modify_time: entry.modify_time,
+    uploader: entry.user_id,
+    file_count: "file_count" in entry ? entry.file_count : undefined,
+  };
+}
+
+async function resolveGroupReactionTarget(
+  params: Record<string, unknown>,
+): Promise<GroupReactionTarget> {
+  const { parseGroupMessageId } = await resolveIcqq();
+  const parsed = parseGroupMessageId(msgid(params));
+  const groupId = Number(parsed.group_id);
+  if (!Number.isFinite(groupId) || groupId <= 0) {
+    throw new Error("message_id 不是有效的群消息");
+  }
+
+  const seq = Number(parsed.seq);
+  if (!Number.isFinite(seq) || seq <= 0) {
+    throw new Error("message_id 未包含有效的群消息序列号");
+  }
+
+  return { groupId, seq };
+}
 
 /** Extract group_id from params (accepts both group_id and gid) */
 function gid(p: Record<string, unknown>): number {
@@ -338,7 +427,7 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
   [Actions.GET_SYSTEM_MSG]: async (client) => {
     const msgs = await client.getSystemMsg();
     // getSystemMsg() may return an array or { friend: [], group: [] }
-    let raw: any[];
+    let raw: unknown[];
     if (Array.isArray(msgs)) {
       raw = msgs;
     } else if (msgs && typeof msgs === "object") {
@@ -349,17 +438,7 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
     } else {
       raw = [];
     }
-    const all = raw.map((m: any) => ({
-      type: m.request_type ?? m.sub_type ?? "unknown",
-      user_id: m.user_id,
-      nickname: m.nickname,
-      group_id: m.group_id,
-      group_name: m.group_name,
-      comment: m.comment,
-      flag: m.flag,
-      seq: m.seq,
-      time: m.time,
-    }));
+    const all = raw.map(normalizeSystemMessage);
     return {
       friendRequests: all.filter((m) => m.type === "friend" || (!m.group_id && m.user_id)),
       groupRequests: all.filter((m) => m.type === "group" || m.group_id),
@@ -404,17 +483,7 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
     const pid = optionalString(params, "pid") ?? "/";
     const gfs = client.acquireGfs(g);
     const files = await gfs.dir(pid);
-    return files.map((f: any) => ({
-      fid: f.fid,
-      name: f.name,
-      pid: f.pid,
-      is_dir: f.is_dir ?? !f.md5,
-      size: f.size,
-      upload_time: f.upload_time ?? f.create_time,
-      modify_time: f.modify_time,
-      uploader: f.user_id,
-      file_count: f.file_count,
-    }));
+    return files.map(normalizeGfsDirEntry);
   },
 
   [Actions.GFS_INFO]: async (client, params) => {
@@ -564,15 +633,15 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
   },
 
   [Actions.GROUP_SET_REACTION]: async (client, params) => {
-    const seq = Number(params.seq);
-    const id = String(params.id);
-    return await client.pickGroup(gid(params)).setReaction(seq, id);
+    const { groupId, seq } = await resolveGroupReactionTarget(params);
+    const id = requireString(params, "id");
+    return await client.pickGroup(groupId).setReaction(seq, id);
   },
 
   [Actions.GROUP_DEL_REACTION]: async (client, params) => {
-    const seq = Number(params.seq);
-    const id = String(params.id);
-    return await client.pickGroup(gid(params)).delReaction(seq, id);
+    const { groupId, seq } = await resolveGroupReactionTarget(params);
+    const id = requireString(params, "id");
+    return await client.pickGroup(groupId).delReaction(seq, id);
   },
 
   [Actions.GET_FORWARD_MSG]: async (client, params) => {
@@ -581,7 +650,7 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
   },
 
   [Actions.MAKE_FORWARD_MSG]: async (client, params) => {
-    const msgs = params.messages as any[];
+    const msgs = params.messages as ForwardMessagesInput;
     const dm = params.dm === true;
     return await client.makeForwardMsg(msgs, dm);
   },
@@ -659,7 +728,7 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
     const pid = optionalString(params, "pid") ?? "/";
     const name = optionalString(params, "name");
     const sourceGfs = client.acquireGfs(sourceGid);
-    const stat = await sourceGfs.stat(fid) as any;
+    const stat = await sourceGfs.stat(fid) as GfsForwardPayload;
     const targetGfs = client.acquireGfs(targetGid);
     return await targetGfs.forward(stat, pid, name);
   },
@@ -717,19 +786,19 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
 
   // ── 获取图片/语音 URL ──
   [Actions.GET_PIC_URL]: async (client, params) => {
-    const elem = params.elem;
+    const elem = params.elem as FriendImageElement;
     const contact = params.group_id
       ? client.pickGroup(gid(params))
       : client.pickFriend(uid(params));
-    return { url: await contact.getPicUrl(elem as any) };
+    return { url: await contact.getPicUrl(elem) };
   },
 
   [Actions.GET_PTT_URL]: async (client, params) => {
-    const elem = params.elem;
+    const elem = params.elem as FriendPttElement;
     const contact = params.group_id
       ? client.pickGroup(gid(params))
       : client.pickFriend(uid(params));
-    return { url: await contact.getPttUrl(elem as any) };
+    return { url: await contact.getPttUrl(elem) };
   },
 
   // ── 视频/加好友设置 ──

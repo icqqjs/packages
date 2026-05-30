@@ -218,7 +218,7 @@ function normalizeMessagePart(item: unknown): string | MessageElem {
     case "rps":
       return { type: "rps" } as MessageElem;
     default:
-      return elem as MessageElem;
+      return elem as unknown as MessageElem;
   }
 }
 

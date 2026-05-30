@@ -1,4 +1,4 @@
-import type { Client } from "@icqqjs/icqq";
+import type { Client, MessageElem } from "@icqqjs/icqq";
 import { Actions } from "./protocol.js";
 import { ACTION_HINTS } from "./action-hints.js";
 import { LEGACY_ACTION_HANDLERS } from "./handlers.js";
@@ -9,6 +9,30 @@ export type ActionCatalogEntry = {
   description: string;
   paramsHint?: string;
   execute: (client: Client, params: Record<string, unknown>) => Promise<unknown>;
+};
+
+type HistorySender = {
+  nickname?: string;
+  card?: string;
+};
+
+type PrivateHistoryMessage = {
+  message_id: string;
+  user_id: number;
+  from_id: number;
+  to_id: number;
+  sender?: HistorySender;
+  message: MessageElem[];
+  time: number;
+};
+
+type GroupHistoryMessage = {
+  message_id: string;
+  user_id: number;
+  group_id: number;
+  sender?: HistorySender;
+  message: MessageElem[];
+  time: number;
 };
 
 function gid(params: Record<string, unknown>): number {
@@ -117,8 +141,11 @@ export const MESSAGE_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
     execute: async (client, params) => {
       const count = params.count ? Number(params.count) : 20;
       const time = params.time ? Number(params.time) : undefined;
-      const messages = await client.pickUser(uid(params)).getChatHistory(time, count);
-      return messages.map((message: any) => ({
+      const messages = await client.pickUser(uid(params)).getChatHistory(
+        time,
+        count,
+      ) as PrivateHistoryMessage[];
+      return messages.map((message) => ({
         message_id: message.message_id,
         user_id: message.user_id,
         from_id: message.from_id,
@@ -136,13 +163,16 @@ export const MESSAGE_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
     execute: async (client, params) => {
       const count = params.count ? Number(params.count) : 20;
       const seq = params.seq ? Number(params.seq) : undefined;
-      const messages = await client.pickGroup(gid(params)).getChatHistory(seq, count);
-      return messages.map((message: any) => ({
+      const messages = await client.pickGroup(gid(params)).getChatHistory(
+        seq,
+        count,
+      ) as GroupHistoryMessage[];
+      return messages.map((message) => ({
         message_id: message.message_id,
         user_id: message.user_id,
         group_id: message.group_id,
         nickname: message.sender?.nickname ?? String(message.user_id),
-        card: (message.sender as any)?.card ?? "",
+        card: message.sender?.card ?? "",
         raw_message: stringifyMessage(message.message),
         time: message.time,
       }));

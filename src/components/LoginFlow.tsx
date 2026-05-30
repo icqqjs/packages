@@ -150,12 +150,12 @@ export function LoginFlow({
 
     return () => {
       disposedRef.current = true;
-      client.off("system.online", onOnline);
-      client.off("system.login.error", onLoginError);
-      client.off("system.login.qrcode", onQrcodeWrapper);
-      client.off("system.login.slider", onSlider);
-      client.off("system.login.device", onDevice);
-      client.off("system.login.auth", onAuth);
+      client.off("system.online");
+      client.off("system.login.error");
+      client.off("system.login.qrcode");
+      client.off("system.login.slider");
+      client.off("system.login.device");
+      client.off("system.login.auth");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
