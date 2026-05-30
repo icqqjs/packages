@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0](https://github.com/icqqjs/cli/compare/v1.5.7...v1.6.0) (2026-05-30)
+
+
+### Features
+
+* enhance message handling by supporting multiple message formats and adding reply functionality ([a2b1ee8](https://github.com/icqqjs/cli/commit/a2b1ee89062c686d13018ea586ed660899d6a46b))
+* **tests:** enhance notification service tests with generic notify and message handling ([7df8a3b](https://github.com/icqqjs/cli/commit/7df8a3b3062bcfaa0318bf9942d0dea31664560d))
+* **tests:** extend message parsing and serialization tests ([7df8a3b](https://github.com/icqqjs/cli/commit/7df8a3b3062bcfaa0318bf9942d0dea31664560d))
+* **tests:** improve coverage for ICQQ event serialization ([7df8a3b](https://github.com/icqqjs/cli/commit/7df8a3b3062bcfaa0318bf9942d0dea31664560d))
+
+
+### Bug Fixes
+
+* update ListSelector component to correctly pass config props ([32fdcd4](https://github.com/icqqjs/cli/commit/32fdcd4f336ab53bcddb94b7145f32f582a6fa9f))
+
 ## [1.5.7](https://github.com/icqqjs/cli/compare/v1.5.6...v1.5.7) (2026-05-29)
 
 
