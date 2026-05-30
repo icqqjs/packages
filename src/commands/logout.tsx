@@ -7,6 +7,7 @@ import { resolveUin } from "@/lib/config.js";
 import { isDaemonRunning } from "@/daemon/lifecycle.js";
 import { IpcClient } from "@/lib/ipc-client.js";
 import { Actions } from "@/daemon/protocol.js";
+import { useCliResultContract } from "@/lib/use-cli-result-contract.js";
 
 export const description = "退出登录并停止守护进程";
 
@@ -41,6 +42,13 @@ export default function Logout({ args: [argUin], options: { k: keepToken } }: Pr
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+  const { jsonMode } = useCliResultContract({
+    pending: loading,
+    error: success ? "" : message,
+    data: { ok: true, message },
+    exit,
+    successExitDelayMs: 100,
+  });
 
   useEffect(() => {
     void (async () => {
@@ -71,14 +79,7 @@ export default function Logout({ args: [argUin], options: { k: keepToken } }: Pr
     })();
   }, [argUin, keepToken]);
 
-  useEffect(() => {
-    if (!loading) {
-      if (!success) process.exitCode = 1;
-      const timer = setTimeout(() => exit(), !success ? 2000 : 100);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, success, exit]);
-
+  if (jsonMode) return null;
   if (loading) return <Spinner label="正在退出登录…" />;
 
   return (

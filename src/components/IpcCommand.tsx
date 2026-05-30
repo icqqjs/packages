@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Text, useApp } from "ink";
 import { Spinner } from "./Spinner.js";
 import { useIpcConnection } from "@/lib/use-ipc-connection.js";
-import { isJsonMode } from "@/lib/json-mode.js";
+import { useCliResultContract } from "@/lib/use-cli-result-contract.js";
 
 type Props = {
   action: string;
@@ -17,6 +17,13 @@ export function IpcCommand({ action, params, render, loadingText }: Props) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState("");
+  const resultError = connError || error;
+  const { jsonMode } = useCliResultContract({
+    pending: loading && !connError,
+    error: resultError,
+    data,
+    exit,
+  });
 
   useEffect(() => {
     if (!ipc) return;
@@ -36,28 +43,7 @@ export function IpcCommand({ action, params, render, loadingText }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ipc]);
 
-  useEffect(() => {
-    if (!loading || connError) {
-      const hasError = !!(connError || error);
-      if (hasError) process.exitCode = 1;
-
-      // JSON mode: print data and exit immediately
-      if (isJsonMode()) {
-        if (hasError) {
-          console.error(JSON.stringify({ ok: false, error: connError || error }));
-        } else {
-          console.log(JSON.stringify(data, null, 2));
-        }
-        const timer = setTimeout(() => exit(), 0);
-        return () => clearTimeout(timer);
-      }
-
-      const timer = setTimeout(() => exit(), hasError ? 2000 : 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, connError, error, data, exit]);
-
-  if (isJsonMode()) {
+  if (jsonMode) {
     if (loading && !connError) return null;
     return null;
   }

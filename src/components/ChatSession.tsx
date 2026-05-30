@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, Box, useInput } from "ink";
 import type { IpcClient } from "@/lib/ipc-client.js";
-import type { IpcEvent } from "@/daemon/protocol.js";
 import { Actions } from "@/daemon/protocol.js";
 import { useAtMode } from "./chat/useAtMode.js";
 import { useEmojiMode } from "./chat/useEmojiMode.js";
@@ -9,7 +8,6 @@ import { useFileMode, tagColor, tagLabel } from "./chat/useFileMode.js";
 import { renderDisplayMessage } from "@/lib/parse-message.js";
 import {
   chatMessageFromEventData,
-  isChatMessageEvent,
 } from "@/lib/ipc-event-filter.js";
 
 type Message = {
@@ -67,8 +65,7 @@ export function ChatSession({ ipc, type, id }: Props) {
 
   // ── Live messages（连接后服务端自动推送） ──
   useEffect(() => {
-    return ipc.onEvent((event: IpcEvent) => {
-      if (!isChatMessageEvent(event, type, id)) return;
+    return ipc.subscribeChatSession(type, id, (event) => {
       const msg = chatMessageFromEventData(event.data as Record<string, unknown>);
       setMessages((prev) => [...prev.slice(-100), msg]);
       setShowHelp(false);

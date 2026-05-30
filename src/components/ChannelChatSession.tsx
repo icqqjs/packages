@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Text, Box, useInput } from "ink";
 import type { IpcClient } from "@/lib/ipc-client.js";
-import type { IpcEvent } from "@/daemon/protocol.js";
 import { Actions } from "@/daemon/protocol.js";
 import { useEmojiMode } from "./chat/useEmojiMode.js";
 import { renderDisplayMessage } from "@/lib/parse-message.js";
 import {
   guildMessageFromEventData,
-  isGuildChannelMessageEvent,
 } from "@/lib/ipc-event-filter.js";
 
 type Message = {
@@ -37,8 +35,7 @@ export function ChannelChatSession({ ipc, guildId, channelId, channelName }: Pro
   const [showHelp, setShowHelp] = useState(true);
 
   useEffect(() => {
-    return ipc.onEvent((event: IpcEvent) => {
-      if (!isGuildChannelMessageEvent(event, channelId)) return;
+    return ipc.subscribeGuildChannel(channelId, (event) => {
       const msg = guildMessageFromEventData(event.data as Record<string, unknown>);
       setMessages((prev) => [...prev.slice(-100), msg]);
       setShowHelp(false);

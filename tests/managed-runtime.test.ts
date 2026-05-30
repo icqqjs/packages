@@ -1,0 +1,281 @@
+import { describe, expect, it, vi } from "vitest";
+import { ManagedRuntime } from "../src/daemon/managed-runtime.js";
+
+function createProcessStub() {
+  return {
+    connected: true,
+    send: vi.fn(),
+    disconnect: vi.fn(),
+    exit: vi.fn(),
+    on: vi.fn(),
+    _icqqLogoutDone: false,
+  };
+}
+
+function createClientStub() {
+  const listeners = new Map<string, (...args: any[]) => void>();
+  return {
+    listeners,
+    login: vi.fn(async () => {}),
+    logout: vi.fn(async () => {}),
+    terminate: vi.fn(),
+    on: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      listeners.set(event, listener);
+    }),
+    once: vi.fn(),
+  };
+}
+
+function createNotificationsStub() {
+  return {
+    notifyOfflineNetwork: vi.fn(),
+    notifyOfflineKickoff: vi.fn(),
+    notifyReconnectSuccess: vi.fn(),
+    notifyReconnectFailed: vi.fn(),
+  };
+}
+
+describe("ManagedRuntime", () => {
+  it("starts server and optional mcp host, then reports startup endpoints", async () => {
+    const steps: string[] = [];
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client: {
+        login: vi.fn(async () => {}),
+        logout: vi.fn(async () => {}),
+        terminate: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+      },
+      server: {
+        start: vi.fn(async () => { steps.push("server.start"); }),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 9000),
+      },
+      rpcConfig: { enabled: true, host: "127.0.0.1" },
+      mcpHost: {
+        start: vi.fn(async () => { steps.push("mcp.start"); }),
+        stop: vi.fn(async () => {}),
+        getEndpointUrl: vi.fn(() => "http://127.0.0.1:9100/mcp"),
+      },
+    });
+
+    await expect(runtime.start()).resolves.toEqual({
+      socketPath: "/tmp/icqq.sock",
+      rpcAddress: "127.0.0.1:9000",
+      mcpUrl: "http://127.0.0.1:9100/mcp",
+    });
+    expect(steps).toEqual(["server.start", "mcp.start"]);
+  });
+
+  it("notifies the parent process when runtime is ready", () => {
+    const processRef = createProcessStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client: {
+        login: vi.fn(async () => {}),
+        logout: vi.fn(async () => {}),
+        terminate: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+      },
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      processRef,
+    });
+
+    runtime.notifyReady();
+
+    expect(processRef.send).toHaveBeenCalledWith("ready");
+    expect(processRef.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("shuts down mcp, server, client and cleanup paths in order", async () => {
+    const steps: string[] = [];
+    const processRef = createProcessStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client: {
+        login: vi.fn(async () => {}),
+        logout: vi.fn(async () => { steps.push("client.logout"); }),
+        terminate: vi.fn(() => { steps.push("client.terminate"); }),
+        on: vi.fn(),
+        once: vi.fn(),
+      },
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => { steps.push("server.stop"); }),
+        getRpcPort: vi.fn(() => 0),
+      },
+      mcpHost: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => { steps.push("mcp.stop"); }),
+        getEndpointUrl: vi.fn(() => null),
+      },
+      cleanupPaths: ["/tmp/a", "/tmp/b"],
+      fsOps: {
+        unlink: vi.fn(async (path: string) => { steps.push(`unlink:${path}`); }),
+      },
+      processRef,
+      logger: { log: vi.fn((msg: string) => { steps.push(msg); }) },
+    });
+
+    await runtime.shutdown("SIGTERM");
+
+    expect(steps).toEqual([
+      "[daemon] 收到 SIGTERM，正在关闭…",
+      "mcp.stop",
+      "server.stop",
+      "client.logout",
+      "client.terminate",
+      "unlink:/tmp/a",
+      "unlink:/tmp/b",
+    ]);
+    expect(processRef.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("skips duplicate logout when handlers already logged out and remains idempotent", async () => {
+    const processRef = createProcessStub();
+    processRef._icqqLogoutDone = true;
+    const client = {
+      login: vi.fn(async () => {}),
+      logout: vi.fn(async () => {}),
+      terminate: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+    };
+    const server = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      getRpcPort: vi.fn(() => 0),
+    };
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server,
+      processRef,
+    });
+
+    await Promise.all([
+      runtime.shutdown("SIGINT"),
+      runtime.shutdown("SIGTERM"),
+    ]);
+
+    expect(client.logout).not.toHaveBeenCalled();
+    expect(client.terminate).toHaveBeenCalledTimes(1);
+    expect(server.stop).toHaveBeenCalledTimes(1);
+    expect(processRef.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconnects after network loss and reports success once online resumes", async () => {
+    const steps: string[] = [];
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(async () => { steps.push("sleep"); }),
+      awaitReconnectOutcome: vi.fn(async () => { steps.push("online"); }),
+      logger: { log: vi.fn((msg: string, ...rest: unknown[]) => {
+        steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
+      }) },
+      reconnectPolicy: { maxRetries: 3, delaysSeconds: [1, 2, 3] },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    await client.listeners.get("system.offline.network")?.({ message: "lost" });
+
+    expect(notifications.notifyOfflineNetwork).toHaveBeenCalledWith("lost");
+    expect(client.login).toHaveBeenCalledWith(123);
+    expect(notifications.notifyReconnectSuccess).toHaveBeenCalledTimes(1);
+    expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
+    expect(steps).toEqual([
+      "[daemon] 网络掉线: lost",
+      "[daemon] 1s 后尝试第 1 次重连…",
+      "sleep",
+      "online",
+      "[daemon] 重连成功",
+    ]);
+  });
+
+  it("reports reconnect exhaustion after retry failures", async () => {
+    const steps: string[] = [];
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    client.login.mockRejectedValue(new Error("boom"));
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(async () => { steps.push("sleep"); }),
+      logger: { log: vi.fn((msg: string, ...rest: unknown[]) => {
+        steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
+      }) },
+      reconnectPolicy: { maxRetries: 2, delaysSeconds: [1, 2] },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    await client.listeners.get("system.offline.network")?.({ message: "lost" });
+
+    expect(client.login).toHaveBeenCalledTimes(2);
+    expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
+    expect(notifications.notifyReconnectFailed).toHaveBeenCalledTimes(1);
+    expect(steps).toEqual([
+      "[daemon] 网络掉线: lost",
+      "[daemon] 1s 后尝试第 1 次重连…",
+      "sleep",
+      "[daemon] 第 1 次重连失败: boom",
+      "[daemon] 2s 后尝试第 2 次重连…",
+      "sleep",
+      "[daemon] 第 2 次重连失败: boom",
+      "[daemon] 2 次重连均失败，放弃重连",
+    ]);
+  });
+
+  it("keeps kickoff handling distinct from reconnect-on-network-loss", async () => {
+    const steps: string[] = [];
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      logger: { log: vi.fn((msg: string, ...rest: unknown[]) => {
+        steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
+      }) },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    client.listeners.get("system.offline.kickoff")?.({ message: "bye" });
+    await Promise.resolve();
+
+    expect(notifications.notifyOfflineKickoff).toHaveBeenCalledWith("bye");
+    expect(client.login).not.toHaveBeenCalled();
+    expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
+    expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
+    expect(steps).toEqual(["[daemon] 被踢下线: bye"]);
+  });
+});

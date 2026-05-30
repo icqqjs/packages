@@ -1,7 +1,8 @@
 import type { Client } from "@icqqjs/icqq";
 import { Actions, type IpcRequest, type IpcResponse } from "./protocol.js";
 import { tryGetDaemonContext } from "./daemon-context.js";
-import { parseMessage, stringifyMessage, resolveSendable } from "@/lib/parse-message.js";
+import { getActionCatalogEntry } from "./action-catalog.js";
+import { parseMessage, resolveSendable } from "@/lib/parse-message.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -49,7 +50,7 @@ function optionalString(p: Record<string, unknown>, key: string): string | undef
   return v;
 }
 
-const handlers: Record<string, Handler> = {
+export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
   // ── 基础 ──
   [Actions.PING]: async () => ({ pong: true, time: Date.now() }),
 
@@ -178,64 +179,7 @@ const handlers: Record<string, Handler> = {
   },
 
   // ── 消息发送 ──
-  [Actions.SEND_PRIVATE_MSG]: async (client, params) => {
-    const message = resolveSendable(params, "message");
-    return await client.pickFriend(uid(params)).sendMsg(message);
-  },
-
-  [Actions.SEND_GROUP_MSG]: async (client, params) => {
-    const message = resolveSendable(params, "message");
-    return await client.pickGroup(gid(params)).sendMsg(message);
-  },
-
   // ── 消息操作 ──
-  [Actions.RECALL_MSG]: async (client, params) => {
-    return await client.deleteMsg(msgid(params));
-  },
-
-  [Actions.GET_MSG]: async (client, params) => {
-    return await client.getMsg(msgid(params));
-  },
-
-  [Actions.HISTORY_PRIVATE]: async (client, params) => {
-    const count = params.count ? Number(params.count) : 20;
-    const time = params.time ? Number(params.time) : undefined;
-    const msgs = await client.pickUser(uid(params)).getChatHistory(time, count);
-    return msgs.map((m: any) => ({
-      message_id: m.message_id,
-      user_id: m.user_id,
-      from_id: m.from_id,
-      to_id: m.to_id,
-      nickname: m.sender?.nickname ?? String(m.user_id),
-      raw_message: stringifyMessage(m.message),
-      time: m.time,
-    }));
-  },
-
-  [Actions.HISTORY_GROUP]: async (client, params) => {
-    const count = params.count ? Number(params.count) : 20;
-    const seq = params.seq ? Number(params.seq) : undefined;
-    const msgs = await client.pickGroup(gid(params)).getChatHistory(seq, count);
-    return msgs.map((m: any) => ({
-      message_id: m.message_id,
-      user_id: m.user_id,
-      group_id: m.group_id,
-      nickname: m.sender?.nickname ?? String(m.user_id),
-      card: (m.sender as any)?.card ?? "",
-      raw_message: stringifyMessage(m.message),
-      time: m.time,
-    }));
-  },
-
-  [Actions.MARK_READ]: async (client, params) => {
-    await client.reportReaded(msgid(params));
-    return { ok: true };
-  },
-
-  [Actions.DELETE_MSG]: async (client, params) => {
-    return await client.deleteMsg(msgid(params));
-  },
-
   // ── 个人设置 ──
   [Actions.SET_NICKNAME]: async (client, params) => {
     return await client.setNickname(requireString(params, "nickname"));
@@ -828,24 +772,25 @@ export async function handleRequest(
   client: Client,
   req: IpcRequest,
 ): Promise<IpcResponse> {
-  const handler = handlers[req.action];
-  if (!handler) {
-    return { id: req.id, ok: false, error: `未知操作: ${req.action}` };
+  const catalogEntry = getActionCatalogEntry(req.action);
+  if (catalogEntry) {
+    try {
+      const data = await catalogEntry.execute(client, req.params);
+      return { id: req.id, ok: true, data };
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : JSON.stringify(err) ?? String(err);
+      return {
+        id: req.id,
+        ok: false,
+        error: message,
+      };
+    }
   }
-  try {
-    const data = await handler(client, req.params);
-    return { id: req.id, ok: true, data };
-  } catch (err) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : typeof err === "string"
-          ? err
-          : JSON.stringify(err) ?? String(err);
-    return {
-      id: req.id,
-      ok: false,
-      error: message,
-    };
-  }
+
+  return { id: req.id, ok: false, error: `未知操作: ${req.action}` };
 }

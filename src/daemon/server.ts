@@ -227,21 +227,6 @@ export class DaemonServer {
   }
 
   private async processRequest(socket: net.Socket, req: IpcRequest) {
-    if (
-      req.action === Actions.SUBSCRIBE ||
-      req.action === Actions.UNSUBSCRIBE
-    ) {
-      this.sendToSocket(socket, {
-        id: req.id,
-        ok: true,
-        data: {
-          deprecated: true,
-          note: "认证连接后自动推送事件，无需 subscribe",
-        },
-      });
-      return;
-    }
-
     try {
       const response = await handleRequest(this.ctx.client, req);
       this.sendToSocket(socket, response);

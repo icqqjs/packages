@@ -20,6 +20,7 @@ import {
   DaemonContext,
   initDaemonContext,
 } from "./daemon-context.js";
+import { ManagedRuntime } from "./managed-runtime.js";
 import { DaemonServer } from "./server.js";
 
 async function main() {
@@ -75,122 +76,43 @@ async function main() {
   const ctx = await DaemonContext.fromClient(client, uin);
   initDaemonContext(ctx);
   const server = new DaemonServer(ctx, ipcToken, rpcConfig);
-  await server.start();
-  console.log(
-    `[daemon] 账号 ${uin} 已上线, socket: ${getSocketPath(uin)}`,
-  );
-  if (rpcConfig.enabled) {
-    console.log(
-      `[daemon] RPC TCP 已启用: ${rpcConfig.host}:${server.getRpcPort()}`,
-    );
-  }
 
   const mcpConfig = resolveMcpConfig(config.mcp);
   let mcpHost: McpHost | null = null;
   if (mcpConfig.enabled) {
     mcpHost = new McpHost(client, uin, mcpConfig);
-    await mcpHost.start();
-    const mcpUrl = mcpHost.getEndpointUrl();
-    if (mcpUrl) {
-      console.log(`[daemon] MCP 已启用: ${mcpUrl}`);
-    }
+  }
+
+  const managedRuntime = new ManagedRuntime({
+    uin,
+    socketPath: getSocketPath(uin),
+    client,
+    server,
+    rpcConfig,
+    mcpHost,
+    cleanupPaths: [
+      getPidPath(uin),
+      getSocketPath(uin),
+      getTokenPath(uin),
+      getRpcPortPath(uin),
+      getMcpEndpointPath(uin),
+    ],
+  });
+  const managedStart = await managedRuntime.start();
+  console.log(
+    `[daemon] 账号 ${uin} 已上线, socket: ${managedStart.socketPath}`,
+  );
+  if (managedStart.rpcAddress) {
+    console.log(`[daemon] RPC TCP 已启用: ${managedStart.rpcAddress}`);
+  }
+  if (managedStart.mcpUrl) {
+    console.log(`[daemon] MCP 已启用: ${managedStart.mcpUrl}`);
   }
 
   // Notify parent process
-  if (process.send) {
-    process.send("ready");
-    if (process.connected) process.disconnect?.();
-  }
-
-  // Graceful shutdown
-  const shutdown = async (signal: string) => {
-    console.log(`[daemon] 收到 ${signal}，正在关闭…`);
-    if (mcpHost) {
-      await mcpHost.stop();
-      mcpHost = null;
-    }
-    await server.stop();
-    // 若 IPC LOGOUT handler 已完成 logout，跳过此步骤避免重复调用
-    const alreadyLoggedOut = (process as NodeJS.Process & { _icqqLogoutDone?: boolean })._icqqLogoutDone === true;
-    if (!alreadyLoggedOut) {
-      try {
-        await client.logout();
-      } catch {
-        /* ignore */
-      }
-    }
-    client.terminate();
-    try {
-      await fs.unlink(getPidPath(uin));
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fs.unlink(getSocketPath(uin));
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fs.unlink(getTokenPath(uin));
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fs.unlink(getRpcPortPath(uin));
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fs.unlink(getMcpEndpointPath(uin));
-    } catch {
-      /* ignore */
-    }
-    process.exit(0);
-  };
-
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-
-  // Offline events — auto reconnect on network loss
-  let reconnecting = false;
-  const autoReconnect = async () => {
-    if (reconnecting) return;
-    reconnecting = true;
-    const maxRetries = 5;
-    const delays = [5, 10, 30, 60, 120]; // seconds
-    for (let i = 0; i < maxRetries; i++) {
-      const delay = delays[i]!;
-      console.log(`[daemon] ${delay}s 后尝试第 ${i + 1} 次重连…`);
-      await new Promise((r) => setTimeout(r, delay * 1000));
-      try {
-        await client.login(uin);
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("重连超时")), 15000);
-          client.once("system.online", () => { clearTimeout(timer); resolve(); });
-          client.once("system.login.error", (e: { message: string }) => { clearTimeout(timer); reject(new Error(e.message)); });
-        });
-        console.log(`[daemon] 重连成功`);
-        ctx.notifications.notifyReconnectSuccess();
-        reconnecting = false;
-        return;
-      } catch (e) {
-        console.log(`[daemon] 第 ${i + 1} 次重连失败: ${e instanceof Error ? e.message : e}`);
-      }
-    }
-    console.log(`[daemon] ${maxRetries} 次重连均失败，放弃重连`);
-    ctx.notifications.notifyReconnectFailed();
-    reconnecting = false;
-  };
-
-  client.on("system.offline.network", (e: { message: string }) => {
-    console.log("[daemon] 网络掉线:", e.message);
-    ctx.notifications.notifyOfflineNetwork(e.message);
-    void autoReconnect();
-  });
-  client.on("system.offline.kickoff", (e: { message: string }) => {
-    console.log("[daemon] 被踢下线:", e.message);
-    ctx.notifications.notifyOfflineKickoff(e.message);
-  });
+  managedRuntime.notifyReady();
+  managedRuntime.attachSignalHandlers();
+  managedRuntime.attachLifecycleHandlers(ctx.notifications);
 
   client.on("request.friend.add", (e: { nickname: string; user_id: number; comment?: string }) => {
     ctx.notifications.notifyFriendRequest(e);

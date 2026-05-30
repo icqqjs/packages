@@ -257,6 +257,28 @@ export class IpcClient {
   }
 
   /**
+   * 注册指定私聊/群聊会话的消息订阅。
+   * 订阅语义集中在客户端侧，服务端仍保持认证后自动推送全部事件。
+   */
+  subscribeChatSession(
+    type: "private" | "group",
+    id: number,
+    onEvent: (event: IpcEvent) => void,
+  ): () => void {
+    const wrapped = wrapSubscribeEventHandler({ type, id }, onEvent);
+    return this.onEvent(wrapped);
+  }
+
+  /** 注册指定频道子频道的消息订阅。 */
+  subscribeGuildChannel(
+    channelId: string,
+    onEvent: (event: IpcEvent) => void,
+  ): () => void {
+    const wrapped = wrapSubscribeEventHandler({ type: "guild", id: channelId }, onEvent);
+    return this.onEvent(wrapped);
+  }
+
+  /**
    * @deprecated 使用 {@link onEvent}。服务端不再维护多条 subscribe，认证后自动推送。
    * 若传入 type/id，仅在客户端按会话过滤（兼容旧调用方式，不会重复推送）。
    */
@@ -265,8 +287,17 @@ export class IpcClient {
     params: Record<string, unknown> = {},
     onEvent: (event: IpcEvent) => void,
   ): { id: string; unsubscribe: () => Promise<void> } {
-    const wrapped = wrapSubscribeEventHandler(params, onEvent);
-    const off = this.onEvent(wrapped);
+    let off: () => void;
+    if (params.type === "private" || params.type === "group") {
+      const sessionId = Number(params.id);
+      off = Number.isFinite(sessionId) && sessionId > 0
+        ? this.subscribeChatSession(params.type, sessionId, onEvent)
+        : this.onEvent(onEvent);
+    } else if (params.type === "guild" && params.id != null && params.id !== "") {
+      off = this.subscribeGuildChannel(String(params.id), onEvent);
+    } else {
+      off = this.onEvent(onEvent);
+    }
     const id = randomUUID();
     return {
       id,

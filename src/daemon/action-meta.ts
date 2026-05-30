@@ -2,6 +2,7 @@
  * IPC / MCP action 元数据（供 icqq_list_actions 使用）。
  */
 import { Actions } from "./protocol.js";
+import { ACTION_CATALOG } from "./action-catalog.js";
 
 export type ActionMeta = {
   description: string;
@@ -27,132 +28,32 @@ export const MCP_BLOCKED_ACTIONS = new Set<string>([
 
 export const ACTION_VALUES = Object.values(Actions) as string[];
 
-const HINTS: Partial<Record<string, ActionMeta>> = {
-  [Actions.PING]: { description: "心跳检测", paramsHint: "无" },
-  [Actions.LOGOUT]: { description: "登出并停止守护进程", paramsHint: "keep_token?: boolean" },
-  [Actions.LIST_FRIENDS]: { description: "获取好友列表", paramsHint: "无" },
-  [Actions.LIST_GROUPS]: { description: "获取群列表", paramsHint: "无" },
-  [Actions.LIST_GROUP_MEMBERS]: { description: "获取群成员列表", paramsHint: "group_id" },
-  [Actions.LIST_BLACKLIST]: { description: "获取黑名单列表", paramsHint: "无" },
-  [Actions.LIST_FRIEND_CLASSES]: { description: "获取好友分组列表", paramsHint: "无" },
-  [Actions.GET_FRIEND_INFO]: { description: "查看好友资料", paramsHint: "user_id" },
-  [Actions.GET_GROUP_INFO]: { description: "查看群信息", paramsHint: "group_id" },
-  [Actions.GET_GROUP_MEMBER_INFO]: { description: "查看群成员资料", paramsHint: "group_id, user_id" },
-  [Actions.GET_STRANGER_INFO]: { description: "查看陌生人资料", paramsHint: "user_id" },
-  [Actions.GET_STATUS]: { description: "获取当前在线状态", paramsHint: "无" },
-  [Actions.GET_SELF_PROFILE]: { description: "获取自身详细资料", paramsHint: "无" },
-  [Actions.SEND_PRIVATE_MSG]: { description: "发送私聊消息", paramsHint: "user_id, message（string | MessageElem[]）" },
-  [Actions.SEND_GROUP_MSG]: { description: "发送群消息", paramsHint: "group_id, message（string | MessageElem[]）" },
-  [Actions.RECALL_MSG]: { description: "撤回消息", paramsHint: "message_id" },
-  [Actions.GET_MSG]: { description: "获取单条消息", paramsHint: "message_id" },
-  [Actions.HISTORY_PRIVATE]: { description: "获取私聊历史", paramsHint: "user_id, count?, time?" },
-  [Actions.HISTORY_GROUP]: { description: "获取群聊历史", paramsHint: "group_id, count?, seq?" },
-  [Actions.MARK_READ]: { description: "标记消息已读", paramsHint: "message_id" },
-  [Actions.DELETE_MSG]: { description: "删除消息", paramsHint: "message_id" },
-  [Actions.SET_NICKNAME]: { description: "修改昵称", paramsHint: "nickname" },
-  [Actions.SET_GENDER]: { description: "修改性别", paramsHint: "gender (0/1/2)" },
-  [Actions.SET_BIRTHDAY]: { description: "修改生日", paramsHint: "birthday" },
-  [Actions.SET_SIGNATURE]: { description: "修改签名", paramsHint: "signature" },
-  [Actions.SET_DESCRIPTION]: { description: "修改个人说明", paramsHint: "description" },
-  [Actions.SET_AVATAR]: { description: "修改头像", paramsHint: "file" },
-  [Actions.SET_ONLINE_STATUS]: { description: "修改在线状态", paramsHint: "status" },
-  [Actions.SET_GROUP_NAME]: { description: "修改群名", paramsHint: "group_id, name" },
-  [Actions.SET_GROUP_AVATAR]: { description: "修改群头像", paramsHint: "group_id, file" },
-  [Actions.SET_GROUP_CARD]: { description: "修改群名片", paramsHint: "group_id, user_id, card" },
-  [Actions.SET_GROUP_TITLE]: { description: "设置群头衔", paramsHint: "group_id, user_id, title, duration?" },
-  [Actions.SET_GROUP_ADMIN]: { description: "设置/取消管理员", paramsHint: "group_id, user_id, enable?" },
-  [Actions.SET_GROUP_REMARK]: { description: "修改群备注", paramsHint: "group_id, remark" },
-  [Actions.GROUP_MUTE]: { description: "禁言成员", paramsHint: "group_id, user_id, duration?" },
-  [Actions.GROUP_MUTE_ALL]: { description: "全体禁言", paramsHint: "group_id, enable?" },
-  [Actions.GROUP_KICK]: { description: "踢出成员", paramsHint: "group_id, user_id, block?, message?" },
-  [Actions.GROUP_QUIT]: { description: "退出群聊", paramsHint: "group_id" },
-  [Actions.GROUP_INVITE]: { description: "邀请好友入群", paramsHint: "group_id, user_id" },
-  [Actions.GROUP_POKE]: { description: "戳一戳群成员", paramsHint: "group_id, user_id" },
-  [Actions.GROUP_ANNOUNCE]: { description: "发送群公告", paramsHint: "group_id, content" },
-  [Actions.GROUP_SIGN]: { description: "群签到", paramsHint: "group_id" },
-  [Actions.GROUP_ESSENCE_ADD]: { description: "添加精华消息", paramsHint: "message_id" },
-  [Actions.GROUP_ESSENCE_REMOVE]: { description: "移除精华消息", paramsHint: "message_id" },
-  [Actions.GROUP_ALLOW_ANONY]: { description: "开关匿名聊天", paramsHint: "group_id, enable?" },
-  [Actions.GROUP_MUTED_LIST]: { description: "获取被禁言成员列表", paramsHint: "group_id" },
-  [Actions.GROUP_AT_ALL_REMAIN]: { description: "查询 @全体 剩余次数", paramsHint: "group_id" },
-  [Actions.FRIEND_POKE]: { description: "戳一戳好友", paramsHint: "user_id" },
-  [Actions.FRIEND_LIKE]: { description: "给好友点赞", paramsHint: "user_id, times?" },
-  [Actions.FRIEND_DELETE]: { description: "删除好友", paramsHint: "user_id, block?" },
-  [Actions.FRIEND_REMARK]: { description: "设置好友备注", paramsHint: "user_id, remark" },
-  [Actions.FRIEND_CLASS]: { description: "移动好友到分组", paramsHint: "user_id, class_id" },
-  [Actions.GET_SYSTEM_MSG]: { description: "获取待处理的好友/群请求", paramsHint: "无" },
-  [Actions.HANDLE_FRIEND_REQUEST]: { description: "处理好友请求", paramsHint: "flag, approve?, remark?, block?" },
-  [Actions.HANDLE_GROUP_REQUEST]: { description: "处理群请求", paramsHint: "flag, approve?, reason?, block?" },
-  [Actions.ADD_FRIEND_CLASS]: { description: "新建好友分组", paramsHint: "name" },
-  [Actions.DELETE_FRIEND_CLASS]: { description: "删除好友分组", paramsHint: "id" },
-  [Actions.RENAME_FRIEND_CLASS]: { description: "重命名好友分组", paramsHint: "id, name" },
-  [Actions.GFS_LIST]: { description: "列出群文件", paramsHint: "group_id, pid?" },
-  [Actions.GFS_INFO]: { description: "群文件系统信息", paramsHint: "group_id" },
-  [Actions.GFS_MKDIR]: { description: "创建群文件夹", paramsHint: "group_id, name" },
-  [Actions.GFS_DELETE]: { description: "删除群文件/文件夹", paramsHint: "group_id, fid" },
-  [Actions.GFS_RENAME]: { description: "重命名群文件", paramsHint: "group_id, fid, name" },
-  [Actions.GFS_STAT]: { description: "查看群文件详情", paramsHint: "group_id, fid" },
-  [Actions.GFS_MOVE]: { description: "移动群文件", paramsHint: "group_id, fid, pid" },
-  [Actions.GFS_DOWNLOAD]: { description: "获取群文件下载链接", paramsHint: "group_id, fid" },
-  [Actions.GFS_UPLOAD]: { description: "上传群文件", paramsHint: "group_id, file, pid?, name?" },
-  [Actions.IMAGE_OCR]: { description: "图片 OCR", paramsHint: "file" },
-  [Actions.RELOAD_FRIEND_LIST]: { description: "重载好友列表", paramsHint: "无" },
-  [Actions.RELOAD_GROUP_LIST]: { description: "重载群列表", paramsHint: "无" },
-  [Actions.CLEAN_CACHE]: { description: "清理缓存", paramsHint: "无" },
-  [Actions.GET_GROUP_SHARE]: { description: "获取群分享 JSON", paramsHint: "group_id" },
-  [Actions.GROUP_SET_JOIN_TYPE]: { description: "设置入群验证方式", paramsHint: "group_id, type, question?, answer?" },
-  [Actions.GROUP_SET_RATE_LIMIT]: { description: "设置群发消息频率限制", paramsHint: "group_id, times" },
-  [Actions.GROUP_MUTE_ANONY]: { description: "禁言匿名成员", paramsHint: "group_id, flag, duration?" },
-  [Actions.GROUP_ANON_INFO]: { description: "获取匿名信息", paramsHint: "group_id" },
-  [Actions.ADD_FRIEND]: { description: "申请添加好友", paramsHint: "group_id, user_id, comment?" },
-  [Actions.SEND_TEMP_MSG]: { description: "发送临时消息", paramsHint: "group_id, user_id, message" },
-  [Actions.GET_ROAMING_STAMP]: { description: "获取漫游表情列表", paramsHint: "无" },
-  [Actions.DELETE_STAMP]: { description: "删除漫游表情", paramsHint: "id" },
-  [Actions.FRIEND_RECALL_FILE]: { description: "撤回好友文件", paramsHint: "user_id, fid" },
-  [Actions.GROUP_SET_REACTION]: { description: "给群消息添加表态", paramsHint: "group_id, seq, id" },
-  [Actions.GROUP_DEL_REACTION]: { description: "取消群消息表态", paramsHint: "group_id, seq, id" },
-  [Actions.GET_FORWARD_MSG]: { description: "获取合并转发内容", paramsHint: "resid" },
-  [Actions.MAKE_FORWARD_MSG]: { description: "构造合并转发消息", paramsHint: "messages, dm?" },
-  [Actions.GUILD_LIST]: { description: "获取频道列表", paramsHint: "无" },
-  [Actions.GUILD_INFO]: { description: "获取频道信息", paramsHint: "guild_id" },
-  [Actions.GUILD_CHANNELS]: { description: "获取频道子频道列表", paramsHint: "guild_id" },
-  [Actions.GUILD_MEMBERS]: { description: "获取频道成员列表", paramsHint: "guild_id" },
-  [Actions.GUILD_SEND_MSG]: { description: "发送频道消息", paramsHint: "guild_id, channel_id, message" },
-  [Actions.GUILD_RECALL_MSG]: { description: "撤回频道消息", paramsHint: "guild_id, channel_id, seq" },
-  [Actions.GET_FILE_INFO]: { description: "获取文件信息", paramsHint: "user_id, fid" },
-  [Actions.GET_FILE_URL]: { description: "获取文件下载链接", paramsHint: "user_id, fid" },
-  [Actions.GET_AVATAR_URL]: { description: "获取用户头像 URL", paramsHint: "user_id, size?" },
-  [Actions.GET_GROUP_AVATAR_URL]: { description: "获取群头像 URL", paramsHint: "group_id, size?, history?" },
-  [Actions.SET_SCREEN_MEMBER_MSG]: { description: "屏蔽/取消屏蔽成员消息", paramsHint: "group_id, user_id, is_screen?" },
-  [Actions.GFS_FORWARD]: { description: "转发群文件到另一群", paramsHint: "group_id, target_group_id, fid, pid?, name?" },
-  [Actions.GFS_FORWARD_OFFLINE]: { description: "转发群文件到离线文件", paramsHint: "group_id, fid, name?" },
-  [Actions.RELOAD_BLACKLIST]: { description: "重载黑名单", paramsHint: "无" },
-  [Actions.RELOAD_STRANGER_LIST]: { description: "重载陌生人列表", paramsHint: "无" },
-  [Actions.GET_STATUS_INFO]: { description: "查询在线状态", paramsHint: "uin?" },
-  [Actions.GET_CLIENT_KEY]: { description: "获取客户端密钥", paramsHint: "无" },
-  [Actions.GET_PSKEY]: { description: "获取 PSKey", paramsHint: "domain" },
-  [Actions.UID2UIN]: { description: "UID 转 UIN", paramsHint: "uid, group_id?" },
-  [Actions.UIN2UID]: { description: "UIN 转 UID", paramsHint: "uin, group_id?" },
-  [Actions.GET_VIDEO_URL]: { description: "获取视频下载链接", paramsHint: "fid, md5" },
-  [Actions.GET_ADD_FRIEND_SETTING]: { description: "获取好友添加设置", paramsHint: "user_id" },
-  [Actions.RELOAD_GUILDS]: { description: "重载频道列表", paramsHint: "无" },
-  [Actions.GET_FORUM_URL]: { description: "获取帖子 URL", paramsHint: "guild_id, channel_id, forum_id" },
-  [Actions.GUILD_CHANNEL_SHARE]: { description: "发送频道分享链接", paramsHint: "guild_id, channel_id, url, title, ..." },
-  [Actions.GET_PIC_URL]: { description: "获取图片 URL", paramsHint: "elem, group_id? | user_id?" },
-  [Actions.GET_PTT_URL]: { description: "获取语音 URL", paramsHint: "elem, group_id? | user_id?" },
-  [Actions.SUBSCRIBE]: { description: "（已废弃）连接后自动推送事件", paramsHint: "无" },
-  [Actions.UNSUBSCRIBE]: { description: "（已废弃）断开连接自动停止", paramsHint: "无" },
-  [Actions.SEND_PRIVATE_FILE]: { description: "发送私聊文件", paramsHint: "user_id, file" },
-  [Actions.SEND_GROUP_FILE]: { description: "发送群文件", paramsHint: "group_id, file, pid?, name?" },
-  [Actions.SET_WEBHOOK]: { description: "设置 Webhook 地址", paramsHint: "url" },
-  [Actions.GET_WEBHOOK]: { description: "查询 Webhook 配置", paramsHint: "无" },
-  [Actions.SET_NOTIFY]: { description: "开启/关闭系统通知", paramsHint: "enabled?" },
-  [Actions.GET_NOTIFY]: { description: "查询系统通知状态", paramsHint: "无" },
-};
-
-export const ACTION_META: Record<string, ActionMeta> = Object.fromEntries(
-  ACTION_VALUES.map((action) => [
+const ACTION_CATALOG_META: Record<string, ActionMeta> = Object.fromEntries(
+  ACTION_CATALOG.map(({ action, description, paramsHint }) => [
     action,
-    HINTS[action] ?? { description: action, paramsHint: "见 protocol Actions" },
+    { description, paramsHint },
   ]),
 );
+
+export const ACTION_META: Record<string, ActionMeta> = Object.fromEntries(
+  ACTION_VALUES.map((action) => {
+    const meta = ACTION_CATALOG_META[action] ?? {
+      description: action,
+      paramsHint: "见 protocol Actions",
+    };
+    return [action, meta];
+  }),
+);
+
+export function getActionMeta(action: string): ActionMeta | null {
+  return ACTION_META[action] ?? null;
+}
+
+export function listActionMetaEntries(): Array<
+  { action: string } & ActionMeta
+> {
+  return Object.entries(ACTION_META).map(([action, meta]) => ({
+    action,
+    ...meta,
+  }));
+}

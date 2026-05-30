@@ -1,8 +1,9 @@
 import type { Client } from "@icqqjs/icqq";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import * as z from "zod/v4";
-import { ACTION_META } from "@/daemon/action-meta.js";
-import { invokeAction } from "./invoke-action.js";
+import {
+  createMcpPluginContext,
+  registerCoreMcpTools,
+} from "./exposure-contract.js";
 import { loadMcpPlugins } from "./plugins/load.js";
 import type { ResolvedMcpConfig } from "@/lib/config.js";
 
@@ -25,63 +26,10 @@ export async function createMcpServer(
     { instructions: INSTRUCTIONS },
   );
 
-  server.registerTool(
-    "icqq_invoke",
-    {
-      title: "调用 QQ IPC 操作",
-      description:
-        "执行单个 IPC action（如 send_private_msg、list_friends）。params 为 JSON 对象。",
-      inputSchema: {
-        action: z.string().describe("IPC action 名称"),
-        params: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("操作参数，默认 {}"),
-      },
-    },
-    async ({ action, params }) => {
-      const result = await invokeAction(client, action, params ?? {});
-      if (!result.ok) {
-        return {
-          content: [{ type: "text" as const, text: result.error }],
-          isError: true,
-        };
-      }
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result.data, null, 2),
-          },
-        ],
-      };
-    },
-  );
+  const pluginContext = createMcpPluginContext({ server, client, uin });
+  registerCoreMcpTools(server, pluginContext);
 
-  server.registerTool(
-    "icqq_list_actions",
-    {
-      title: "列出可用 IPC actions",
-      description: "返回所有可传给 icqq_invoke 的 action 及说明",
-      inputSchema: {},
-    },
-    async () => {
-      const list = Object.entries(ACTION_META).map(([action, meta]) => ({
-        action,
-        ...meta,
-      }));
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(list, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  await loadMcpPlugins(server, client, uin, config.plugins);
+  await loadMcpPlugins(pluginContext, config.plugins);
 
   return server;
 }
