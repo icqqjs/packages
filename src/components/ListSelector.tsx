@@ -115,14 +115,14 @@ type ListSelectorProps<T, ID extends string | number = number> =
   };
 
 function ListSelectorWithConnection<T, ID extends string | number = number>(
-  config: ListSelectorConfig<T, ID>,
+  props: ListSelectorConfig<T, ID>,
 ) {
   const { ipc, error } = useIpcConnection();
 
   if (error) return <Text color="red">✖ {error}</Text>;
   if (!ipc) return <Spinner label="连接守护进程…" />;
 
-  return <SelectorList ipc={ipc} ownConnection config={config} />;
+  return <SelectorList ipc={ipc} ownConnection config={props} />;
 }
 
 export function ListSelector<T, ID extends string | number = number>(
@@ -134,5 +134,5 @@ export function ListSelector<T, ID extends string | number = number>(
     return <SelectorList ipc={ipc} ownConnection={false} config={config} />;
   }
 
-  return <ListSelectorWithConnection config={config} />;
+  return <ListSelectorWithConnection {...config} />;
 }
