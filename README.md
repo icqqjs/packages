@@ -94,6 +94,8 @@ ICQQ_CURRENT_UIN=12345 icqq friend list
 
 MCP 与 IPC **同进程**运行，由配置开关；`icqq login` 或 `icqq service start` 拉起守护进程时按需启用。
 
+PR #40 后，MCP action discovery 与实际调用统一来自同一条 canonical contract：先用 `icqq_list_actions` 查看可调用 action 与参数提示，再用 `icqq_invoke` 调用；返回结果与错误也会按同一 contract 规范化，避免 discovery 与 invoke 漂移。
+
 ```bash
 icqq config set mcp.enabled true
 icqq config set mcp.http.port 3920          # 可选，0 为自动分配
@@ -105,8 +107,8 @@ icqq service restart                      # 或重新 login
 
 | MCP 工具 | 说明 |
 |----------|------|
-| `icqq_invoke` | 调用任意 IPC action（如 `send_private_msg`） |
-| `icqq_list_actions` | 列出可用 action 及参数说明 |
+| `icqq_invoke` | 调用任意可发现的 IPC action（如 `send_private_msg`） |
+| `icqq_list_actions` | 列出当前可发现 action 及参数说明，是 MCP 调用的权威来源 |
 
 **Cursor 配置示例**（Streamable HTTP）：
 
