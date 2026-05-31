@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/icqqjs/cli/compare/v1.6.0...v1.7.0) (2026-05-31)
+
+
+### Features
+
+* 添加环境变量支持以跳过直接导入 icqq ([e09150e](https://github.com/icqqjs/cli/commit/e09150e6fb877e94adf752c6a895e1cdbab08976))
+
+
+### Bug Fixes
+
+* 更新群消息表态功能，使用 message_id 替代 group_id 和 seq，优化相关处理逻辑 ([ce13d6a](https://github.com/icqqjs/cli/commit/ce13d6aa80e04e38026671890ee37bb5e1f0203a))
+
 ## [1.6.0](https://github.com/icqqjs/cli/compare/v1.5.7...v1.6.0) (2026-05-30)
 
 
