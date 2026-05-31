@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/icqqjs/cli/compare/v1.7.0...v1.7.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* 增加对 parseGroupMessageId 的模拟实现以支持测试 ([efc7c31](https://github.com/icqqjs/cli/commit/efc7c31859bb19d435b64fa0d3df81c499fefa71))
+
 ## [1.7.0](https://github.com/icqqjs/cli/compare/v1.6.0...v1.7.0) (2026-05-31)
 
 
