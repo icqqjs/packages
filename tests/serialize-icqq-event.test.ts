@@ -1,9 +1,52 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/lib/icqq-resolve.js", () => ({
+  resolveIcqq: vi.fn(async () => ({
+    genGroupMessageId: (
+      gid: number,
+      uin: number,
+      seq: number,
+      rand: number,
+      time: number,
+      pktnum = 1,
+    ) => {
+      const buf = Buffer.allocUnsafe(21);
+      buf.writeUInt32BE(gid);
+      buf.writeUInt32BE(uin, 4);
+      buf.writeInt32BE(seq & 0xffffffff, 8);
+      buf.writeInt32BE(rand & 0xffffffff, 12);
+      buf.writeUInt32BE(time, 16);
+      buf.writeUInt8(pktnum > 1 ? pktnum : 1, 20);
+      return buf.toString("base64");
+    },
+    genDmMessageId: (
+      uin: number,
+      seq: number,
+      rand: number,
+      time: number,
+      flag = 0,
+    ) => {
+      const buf = Buffer.allocUnsafe(17);
+      buf.writeUInt32BE(uin);
+      buf.writeInt32BE(seq & 0xffffffff, 4);
+      buf.writeInt32BE(rand & 0xffffffff, 8);
+      buf.writeUInt32BE(time, 12);
+      buf.writeUInt8(flag, 16);
+      return buf.toString("base64");
+    },
+  })),
+}));
+
+import { initIcqqMessageIdBuilders } from "../src/lib/icqq-message-id.js";
 import {
   ICQQ_EVENT_JSON_OMIT_KEYS,
   icqqEventJsonReplacer,
   serializeIcqqEvent,
 } from "../src/lib/serialize-icqq-event.js";
+
+beforeAll(async () => {
+  await initIcqqMessageIdBuilders();
+});
 
 describe("serializeIcqqEvent", () => {
   it("uses icqq toJSON and omits internal keys", () => {
@@ -79,6 +122,90 @@ describe("serializeIcqqEvent", () => {
     expect(serializeIcqqEvent(circular)).toEqual({
       list: ["1", { type: "Buffer", data: Buffer.from("hi").toString("base64") }],
       self: undefined,
+    });
+  });
+
+  it("merges source when toJSON omits quoted message", () => {
+    const quoted = {
+      message_id: "quoted-1",
+      user_id: 111,
+      raw_message: "原消息内容",
+      time: 1_700_000_001,
+      toJSON(keys: string[]) {
+        return Object.fromEntries(
+          Object.entries(this).filter(
+            ([key, value]) =>
+              typeof value !== "function" && !keys.includes(key),
+          ),
+        );
+      },
+    };
+
+    const event = {
+      post_type: "message",
+      message_type: "group",
+      group_id: 123,
+      raw_message: "回复内容",
+      source: quoted,
+      toJSON() {
+        return {
+          post_type: "message",
+          message_type: "group",
+          group_id: 123,
+          raw_message: "回复内容",
+        };
+      },
+    };
+
+    const data = serializeIcqqEvent(event) as Record<string, unknown>;
+    expect(data.source).toEqual({
+      message_id: "quoted-1",
+      user_id: 111,
+      raw_message: "原消息内容",
+      time: 1_700_000_001,
+    });
+  });
+
+  it("replaces shallow source stub with full quoted message", () => {
+    const quoted = {
+      message_id: "quoted-2",
+      raw_message: "完整引用",
+      user_id: 222,
+    };
+
+    const event = {
+      raw_message: "回复",
+      source: quoted,
+      toJSON() {
+        return { raw_message: "回复", source: { id: "quoted-2" } };
+      },
+    };
+
+    const data = serializeIcqqEvent(event) as Record<string, unknown>;
+    expect(data.source).toEqual({
+      message_id: "quoted-2",
+      raw_message: "完整引用",
+      user_id: 222,
+    });
+  });
+
+  it("keeps source already expanded by toJSON", () => {
+    const event = {
+      raw_message: "回复",
+      source: { message_id: "q3", raw_message: "已有", user_id: 3 },
+      toJSON() {
+        return {
+          raw_message: "回复",
+          source: { message_id: "q3", raw_message: "已有", user_id: 3 },
+        };
+      },
+    };
+
+    const data = serializeIcqqEvent(event) as Record<string, unknown>;
+    expect(data.source).toEqual({
+      message_id: "q3",
+      raw_message: "已有",
+      user_id: 3,
     });
   });
 

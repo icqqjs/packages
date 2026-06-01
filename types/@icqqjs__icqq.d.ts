@@ -26,4 +26,26 @@ declare module "@icqqjs/icqq" {
 
   export function createClient(options: Record<string, unknown>): Client;
   export function parseGroupMessageId(msgid: string): ParsedGroupMessageId;
+  export function genGroupMessageId(
+    gid: number,
+    uin: number,
+    seq: number,
+    rand: number,
+    time: number,
+    pktnum?: number,
+  ): string;
+  export function genDmMessageId(
+    uin: number,
+    seq: number,
+    rand: number,
+    time: number,
+    flag?: number,
+  ): string;
+  export function parseDmMessageId(msgid: string): {
+    user_id: number;
+    seq: number;
+    rand: number;
+    time: number;
+    flag: number;
+  };
 }

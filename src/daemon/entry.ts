@@ -22,6 +22,7 @@ import {
 } from "./daemon-context.js";
 import { ManagedRuntime } from "./managed-runtime.js";
 import { DaemonServer } from "./server.js";
+import { initIcqqMessageIdBuilders } from "@/lib/icqq-message-id.js";
 
 async function main() {
   const uin = Number(process.argv[2]);
@@ -70,6 +71,8 @@ async function main() {
 
     client.login(uin).catch((e: unknown) => settle(() => reject(e)));
   });
+
+  await initIcqqMessageIdBuilders();
 
   // Start IPC + optional RPC server
   const rpcConfig = resolveRpcConfig(config.rpc);

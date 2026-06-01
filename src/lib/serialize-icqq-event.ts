@@ -1,7 +1,10 @@
 /**
  * 将 icqq 事件对象序列化为可 JSON 传输的 plain object。
  * 优先调用 icqq 自带的 toJSON(keys)，排除内部协议字段与 Client/Group 等类实例。
+ * 若 toJSON 未带上引用消息，会从原始 event.source 补全序列化结果。
+ * source / reply 等仅有 seq+rand+time 时，会生成 CQHTTP 风格 message_id 供下游使用。
  */
+import { applyCanonicalMessageIds } from "@/lib/icqq-message-id.js";
 
 /** icqq Message / 事件对象 toJSON 时需排除的键 */
 export const ICQQ_EVENT_JSON_OMIT_KEYS = [
@@ -24,6 +27,39 @@ function hasIcqqToJSON(
   value: object,
 ): value is { toJSON: (keys: string[]) => Record<string, unknown> } {
   return typeof (value as { toJSON?: unknown }).toJSON === "function";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** toJSON 未展开或只留了 reply id 时，视为需从原始 event.source 补全 */
+function isShallowQuotedMessage(value: unknown): boolean {
+  if (!isRecord(value)) return true;
+  if (
+    typeof value.raw_message === "string" ||
+    Array.isArray(value.message) ||
+    typeof value.message_id === "string" ||
+    typeof value.user_id === "number"
+  ) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return keys.length === 0 || (keys.length <= 2 && "id" in value);
+}
+
+function needsSourceFromRaw(
+  plainSource: unknown,
+  rawSource: unknown,
+): boolean {
+  if (plainSource === undefined) return true;
+  if (isShallowQuotedMessage(plainSource) && !isShallowQuotedMessage(rawSource)) {
+    return true;
+  }
+  if (isRecord(plainSource) && hasIcqqToJSON(plainSource)) {
+    return true;
+  }
+  return false;
 }
 
 function toPlainEvent(event: unknown, seen = new WeakSet<object>()): unknown {
@@ -57,7 +93,21 @@ function toPlainEvent(event: unknown, seen = new WeakSet<object>()): unknown {
 
 /** 序列化 icqq 事件，供 IPC / Webhook JSON 传输使用 */
 export function serializeIcqqEvent(event: unknown): unknown {
-  return toPlainEvent(event);
+  const plain = toPlainEvent(event);
+  if (!isRecord(plain) || !isRecord(event)) {
+    return plain;
+  }
+
+  const rawSource = event.source;
+  if (rawSource !== null && rawSource !== undefined) {
+    if (needsSourceFromRaw(plain.source, rawSource)) {
+      plain.source = toPlainEvent(rawSource);
+    }
+  }
+
+  applyCanonicalMessageIds(plain, event);
+
+  return plain;
 }
 
 /** JSON.stringify replacer，配合 serializeIcqqEvent 兜底 BigInt / Buffer */
