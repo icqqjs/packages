@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.2](https://github.com/icqqjs/cli/compare/v1.7.1...v1.7.2) (2026-06-01)
+
+
+### Bug Fixes
+
+* enhance icqq event serialization with message ID handling ([2835333](https://github.com/icqqjs/cli/commit/28353330b5e99d9b65983115843ab7703e4d3205))
+* 移除 .npmrc 中的 GitHub npm 注册表配置 ([88f2085](https://github.com/icqqjs/cli/commit/88f20857401c530907daf1ef16e3368a0f1b8866))
+
 ## [1.7.1](https://github.com/icqqjs/cli/compare/v1.7.0...v1.7.1) (2026-05-31)
 
 
