@@ -267,6 +267,112 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
     return await client.getStrangerInfo(uid(params));
   },
 
+  [Actions.LIST_STRANGERS]: async (client) => {
+    return [...client.sl.values()].map((s) => ({
+      user_id: s.user_id,
+      nickname: s.nickname,
+      sex: s.sex,
+      age: s.age,
+    }));
+  },
+
+  [Actions.GET_PROFILE]: async (client, params) => {
+    const target = params.user_id ?? params.uid;
+    if (target === undefined || target === null || target === "") {
+      throw new Error("缺少 user_id 或 uid");
+    }
+    if (typeof target === "number" || (typeof target === "string" && /^\d+$/.test(target))) {
+      return await client.getProfile(Number(target));
+    }
+    if (typeof target === "string") {
+      return await client.getProfile(target);
+    }
+    throw new Error("无效的 user_id / uid");
+  },
+
+  [Actions.GET_ONLINE_STATUS]: async (client) => {
+    return { status: await client.getOnlineStatus() };
+  },
+
+  [Actions.GET_CHANNEL_INFO]: async (client, params) => {
+    const guildId = requireString(params, "guild_id");
+    const channelId = requireString(params, "channel_id");
+    const info = client.getChannelInfo(guildId, channelId);
+    if (!info) throw new Error(`子频道 ${channelId} 不存在`);
+    return info;
+  },
+
+  [Actions.FRIEND_FORWARD_FILE]: async (client, params) => {
+    const fid = requireString(params, "fid");
+    const groupId = params.group_id ? gid(params) : 0;
+    const result = await client.pickFriend(uid(params)).forwardFile(fid, groupId);
+    return { fid: result };
+  },
+
+  [Actions.SEARCH_SAME_GROUP]: async (client, params) => {
+    return await client.pickFriend(uid(params)).searchSameGroup();
+  },
+
+  [Actions.SEND_CONTACT_SHARE]: async (client, params) => {
+    const url = requireString(params, "url");
+    const title = requireString(params, "title");
+    const content = {
+      url,
+      title,
+      image: optionalString(params, "image"),
+      content: optionalString(params, "content"),
+      audio: optionalString(params, "audio"),
+    };
+    const contact = params.group_id ?? params.gid
+      ? client.pickGroup(gid(params))
+      : client.pickFriend(uid(params));
+    await contact.share(content);
+    return { ok: true };
+  },
+
+  [Actions.GET_COOKIES]: async (client, params) => {
+    const domain = optionalString(params, "domain");
+    return { cookies: client.getCookies(domain as never) };
+  },
+
+  [Actions.GET_CSRF_TOKEN]: async (client) => {
+    return { token: client.getCsrfToken() };
+  },
+
+  [Actions.REFRESH_NT_PIC_RKEY]: async (client, params) => {
+    const force = params.force === true;
+    return await client.refreshNTPicRkey(force);
+  },
+
+  [Actions.SEND_DISCUSS_MSG]: async (client, params) => {
+    const discussId = Number(params.discuss_id);
+    if (!Number.isFinite(discussId) || discussId <= 0) {
+      throw new Error("无效的 discuss_id");
+    }
+    const message = resolveSendable(params, "message");
+    return await client.sendDiscussMsg(discussId, message);
+  },
+
+  [Actions.UID2UINS]: async (client, params) => {
+    const uids = params.uids;
+    if (!Array.isArray(uids) || uids.length === 0) {
+      throw new Error("缺少参数 uids（string[]）");
+    }
+    const groupId = params.group_id ? Number(params.group_id) : undefined;
+    const uins = await client.uid2uins(uids as string[], groupId);
+    return { uins };
+  },
+
+  [Actions.UIN2UIDS]: async (client, params) => {
+    const uins = params.uins;
+    if (!Array.isArray(uins) || uins.length === 0) {
+      throw new Error("缺少参数 uins（number[]）");
+    }
+    const groupId = params.group_id ? Number(params.group_id) : undefined;
+    const uids = await client.uin2uids(uins as number[], groupId);
+    return { uids };
+  },
+
   // ── 消息发送 ──
   // ── 消息操作 ──
   // ── 个人设置 ──
@@ -585,12 +691,6 @@ export const LEGACY_ACTION_HANDLERS: Record<string, Handler> = {
     const u = uid(params);
     const comment = optionalString(params, "comment") ?? "";
     return await client.addFriend(g, u, comment);
-  },
-
-  [Actions.SEND_TEMP_MSG]: async (client, params) => {
-    const g = gid(params);
-    const message = resolveSendable(params, "message");
-    return await client.sendTempMsg(g, uid(params), message);
   },
 
   [Actions.GET_ROAMING_STAMP]: async (client) => {

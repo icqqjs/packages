@@ -27,10 +27,13 @@ describe("pilot action catalog", () => {
     expect(MESSAGE_ACTION_CATALOG.map((entry) => entry.action)).toEqual([
       Actions.SEND_PRIVATE_MSG,
       Actions.SEND_GROUP_MSG,
+      Actions.SEND_TEMP_MSG,
       Actions.RECALL_MSG,
       Actions.GET_MSG,
       Actions.HISTORY_PRIVATE,
       Actions.HISTORY_GROUP,
+      Actions.HISTORY_BY_MSG_ID,
+      Actions.SEND_LONG_MSG,
       Actions.MARK_READ,
       Actions.DELETE_MSG,
     ]);
@@ -111,10 +114,12 @@ describe("pilot action catalog", () => {
 
   it("executes migrated message actions through the catalog seam", async () => {
     const sendPrivate = getActionCatalogEntry(Actions.SEND_PRIVATE_MSG);
+    const sendTemp = getActionCatalogEntry(Actions.SEND_TEMP_MSG);
     const historyGroup = getActionCatalogEntry(Actions.HISTORY_GROUP);
     const markRead = getActionCatalogEntry(Actions.MARK_READ);
 
     const sendMsg = vi.fn(async () => ({ message_id: "pm-1" }));
+    const sendTempMsg = vi.fn(async () => ({ message_id: "temp-1" }));
     const getChatHistory = vi.fn(async () => [
       {
         message_id: "g-1",
@@ -130,6 +135,7 @@ describe("pilot action catalog", () => {
     const client = {
       pickFriend: vi.fn(() => ({ sendMsg })),
       pickGroup: vi.fn(() => ({ getChatHistory })),
+      sendTempMsg,
       reportReaded,
     } as unknown as import("@icqqjs/icqq").Client;
 
@@ -137,10 +143,15 @@ describe("pilot action catalog", () => {
       sendPrivate?.execute(client, { user_id: 1, message: "hello" }),
     ).resolves.toEqual({ message_id: "pm-1" });
     await expect(
+      sendTemp?.execute(client, { group_id: 9, user_id: 2, message: "temp hi" }),
+    ).resolves.toEqual({ message_id: "temp-1" });
+    expect(sendTempMsg).toHaveBeenCalledWith(9, 2, "temp hi");
+    await expect(
       historyGroup?.execute(client, { group_id: 9, count: 1 }),
     ).resolves.toEqual([
       {
         message_id: "g-1",
+        message_type: "group",
         user_id: 2,
         group_id: 9,
         nickname: "群友",

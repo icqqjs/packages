@@ -53,6 +53,49 @@ function msgid(params: Record<string, unknown>): string {
   return value;
 }
 
+function mapPrivateHistoryMessage(message: PrivateHistoryMessage) {
+  return {
+    message_id: message.message_id,
+    message_type: "private" as const,
+    user_id: message.user_id,
+    from_id: message.from_id,
+    to_id: message.to_id,
+    nickname: message.sender?.nickname ?? String(message.user_id),
+    raw_message: stringifyMessage(message.message),
+    time: message.time,
+  };
+}
+
+function mapGroupHistoryMessage(message: GroupHistoryMessage) {
+  return {
+    message_id: message.message_id,
+    message_type: "group" as const,
+    user_id: message.user_id,
+    group_id: message.group_id,
+    nickname: message.sender?.nickname ?? String(message.user_id),
+    card: message.sender?.card ?? "",
+    raw_message: stringifyMessage(message.message),
+    time: message.time,
+  };
+}
+
+function mapHistoryByMsgId(
+  message: PrivateHistoryMessage | GroupHistoryMessage,
+) {
+  if ("group_id" in message && message.group_id !== undefined) {
+    return mapGroupHistoryMessage(message as GroupHistoryMessage);
+  }
+  return mapPrivateHistoryMessage(message as PrivateHistoryMessage);
+}
+
+function pickMessageContact(client: Client, params: Record<string, unknown>) {
+  const groupId = params.group_id ?? params.gid;
+  if (groupId !== undefined && groupId !== null && groupId !== "") {
+    return client.pickGroup(gid(params));
+  }
+  return client.pickFriend(uid(params));
+}
+
 export const PILOT_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
   {
     action: Actions.PING,
@@ -116,10 +159,23 @@ export const MESSAGE_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
   {
     action: Actions.SEND_GROUP_MSG,
     description: "发送群消息",
-    paramsHint: "group_id, message（string | MessageElem[]）",
+    paramsHint: "group_id, message（string | MessageElem[]）, anonymous?",
     execute: async (client, params) => {
       const message = resolveSendable(params, "message");
-      return await client.pickGroup(gid(params)).sendMsg(message);
+      const group = client.pickGroup(gid(params));
+      if (params.anonymous === true) {
+        return await group.sendMsg(message, undefined, true);
+      }
+      return await group.sendMsg(message);
+    },
+  },
+  {
+    action: Actions.SEND_TEMP_MSG,
+    description: "发送群临时会话消息",
+    paramsHint: "group_id, user_id, message（string | MessageElem[]）",
+    execute: async (client, params) => {
+      const message = resolveSendable(params, "message");
+      return await client.sendTempMsg(gid(params), uid(params), message);
     },
   },
   {
@@ -145,15 +201,7 @@ export const MESSAGE_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
         time,
         count,
       ) as PrivateHistoryMessage[];
-      return messages.map((message) => ({
-        message_id: message.message_id,
-        user_id: message.user_id,
-        from_id: message.from_id,
-        to_id: message.to_id,
-        nickname: message.sender?.nickname ?? String(message.user_id),
-        raw_message: stringifyMessage(message.message),
-        time: message.time,
-      }));
+      return messages.map((message) => mapPrivateHistoryMessage(message));
     },
   },
   {
@@ -167,15 +215,31 @@ export const MESSAGE_ACTION_CATALOG: readonly ActionCatalogEntry[] = [
         seq,
         count,
       ) as GroupHistoryMessage[];
-      return messages.map((message) => ({
-        message_id: message.message_id,
-        user_id: message.user_id,
-        group_id: message.group_id,
-        nickname: message.sender?.nickname ?? String(message.user_id),
-        card: message.sender?.card ?? "",
-        raw_message: stringifyMessage(message.message),
-        time: message.time,
-      }));
+      return messages.map((message) => mapGroupHistoryMessage(message));
+    },
+  },
+  {
+    action: Actions.HISTORY_BY_MSG_ID,
+    description: "以 message_id 为锚点拉历史",
+    paramsHint: "message_id, count?",
+    execute: async (client, params) => {
+      const count = params.count ? Number(params.count) : 20;
+      const messages = await client.getChatHistory(msgid(params), count) as (
+        | PrivateHistoryMessage
+        | GroupHistoryMessage
+      )[];
+      return messages.map((message) => mapHistoryByMsgId(message));
+    },
+  },
+  {
+    action: Actions.SEND_LONG_MSG,
+    description: "发送长消息（long_msg）",
+    paramsHint: "user_id 或 group_id, message（string | MessageElem[]）",
+    execute: async (client, params) => {
+      const message = resolveSendable(params, "message");
+      const contact = pickMessageContact(client, params);
+      const longElem = await contact.uploadLongMsg(message);
+      return await contact.sendMsg(longElem);
     },
   },
   {

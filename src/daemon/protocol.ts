@@ -91,8 +91,14 @@ export const Actions = {
   GET_GROUP_MEMBER_INFO: "get_group_member_info",
   /** 查看陌生人资料。参数: user_id */
   GET_STRANGER_INFO: "get_stranger_info",
+  /** 获取陌生人列表 */
+  LIST_STRANGERS: "list_strangers",
+  /** 获取详细资料卡。参数: user_id（number）或 uid（string） */
+  GET_PROFILE: "get_profile",
   /** 获取当前在线状态（uin、nickname、online） */
   GET_STATUS: "get_status",
+  /** 向服务器查询在线状态 */
+  GET_ONLINE_STATUS: "get_online_status",
   /** 获取自身详细资料 */
   GET_SELF_PROFILE: "get_self_profile",
 
@@ -101,6 +107,8 @@ export const Actions = {
   SEND_PRIVATE_MSG: "send_private_msg",
   /** 发送群消息。参数: group_id, message（string 或 MessageElem[]） */
   SEND_GROUP_MSG: "send_group_msg",
+  /** 发送群临时会话消息。参数: group_id, user_id, message（string 或 MessageElem[]） */
+  SEND_TEMP_MSG: "send_temp_msg",
 
   // ── 消息操作 ──
   /** 撤回消息。参数: message_id */
@@ -111,6 +119,10 @@ export const Actions = {
   HISTORY_PRIVATE: "history_private",
   /** 获取群聊历史。参数: group_id, count?, seq? */
   HISTORY_GROUP: "history_group",
+  /** 以 message_id 为锚点拉历史。参数: message_id, count? */
+  HISTORY_BY_MSG_ID: "history_by_msg_id",
+  /** 发送长消息 long_msg。参数: user_id 或 group_id, message */
+  SEND_LONG_MSG: "send_long_msg",
   /** 标记消息已读。参数: message_id */
   MARK_READ: "mark_read",
   /** 删除消息。参数: message_id */
@@ -245,8 +257,6 @@ export const Actions = {
   // ── 好友操作扩展 ──
   /** 申请添加好友。参数: group_id, user_id, comment? */
   ADD_FRIEND: "add_friend",
-  /** 发送临时消息。参数: group_id, user_id, message */
-  SEND_TEMP_MSG: "send_temp_msg",
 
   // ── 漫游表情 ──
   /** 获取漫游表情列表 */
@@ -257,6 +267,12 @@ export const Actions = {
   // ── 好友文件操作 ──
   /** 撤回好友文件。参数: user_id, fid */
   FRIEND_RECALL_FILE: "friend_recall_file",
+  /** 转发私聊文件到群/临时。参数: user_id, fid, group_id? */
+  FRIEND_FORWARD_FILE: "friend_forward_file",
+  /** 查找与用户的共群。参数: user_id */
+  SEARCH_SAME_GROUP: "search_same_group",
+  /** 发送链接分享卡片。参数: user_id 或 group_id, url, title, image?, content?, audio? */
+  SEND_CONTACT_SHARE: "send_contact_share",
 
   // ── 群文件上传 ──
   /** 上传群文件。参数: group_id, file, pid?, name? */
@@ -281,6 +297,8 @@ export const Actions = {
   GUILD_INFO: "guild_info",
   /** 获取频道子频道列表。参数: guild_id */
   GUILD_CHANNELS: "guild_channels",
+  /** 获取子频道详情。参数: guild_id, channel_id */
+  GET_CHANNEL_INFO: "get_channel_info",
   /** 获取频道成员列表。参数: guild_id */
   GUILD_MEMBERS: "guild_members",
   /** 发送频道消息。参数: guild_id, channel_id, message */
@@ -325,8 +343,20 @@ export const Actions = {
   GET_PSKEY: "get_pskey",
   /** UID 转 UIN。参数: uid, group_id? */
   UID2UIN: "uid2uin",
+  /** 批量 UID 转 UIN。参数: uids (string[]), group_id? */
+  UID2UINS: "uid2uins",
   /** UIN 转 UID。参数: uin, group_id? */
   UIN2UID: "uin2uid",
+  /** 批量 UIN 转 UID。参数: uins (number[]), group_id? */
+  UIN2UIDS: "uin2uids",
+  /** 获取 Cookies。参数: domain? */
+  GET_COOKIES: "get_cookies",
+  /** 获取 CSRF Token (bkn) */
+  GET_CSRF_TOKEN: "get_csrf_token",
+  /** 刷新 QQNT 图片 rkey */
+  REFRESH_NT_PIC_RKEY: "refresh_nt_pic_rkey",
+  /** 发送讨论组消息。参数: discuss_id, message */
+  SEND_DISCUSS_MSG: "send_discuss_msg",
 
   // ── 视频/加好友设置 ──
   /** 获取视频下载链接。参数: fid, md5 */

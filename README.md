@@ -142,7 +142,11 @@ icqq service restart                      # 或重新 login
 | 命令 | 说明 |
 |------|------|
 | `icqq friend send <qq> <message>` | 发送私聊消息 |
-| `icqq group send <gid> <message>` | 发送群消息 |
+| `icqq group send <gid> <message>` | 发送群消息（`-a` 匿名） |
+| `icqq group send-temp <gid> <uid> <message>` | 发送群临时会话消息 |
+| `icqq msg history-by-id <msgid>` | 以 message_id 拉历史 |
+| `icqq friend profile <qq>` | 详细资料卡 |
+| `icqq stranger list` | 陌生人列表 |
 | `icqq friend chat <qq>` | 进入好友交互聊天 |
 | `icqq group chat <gid>` | 进入群交互聊天 |
 | `icqq friend chat history <qq>` | 查看好友聊天记录 |
