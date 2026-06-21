@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/icqqjs/cli/compare/v1.7.2...v1.8.0) (2026-06-21)
+
+
+### Features
+
+* add support for sending temporary group messages and enhance action catalog ([b6f415b](https://github.com/icqqjs/cli/commit/b6f415b91891813b0a43f4b731dd1285f6557b7d))
+
 ## [1.7.2](https://github.com/icqqjs/cli/compare/v1.7.1...v1.7.2) (2026-06-01)
 
 
