@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.3](https://github.com/icqqjs/cli/compare/v1.8.2...v1.8.3) (2026-06-22)
+
+
+### Bug Fixes
+
+* add reinstall option for GitHub package installation ([b95826d](https://github.com/icqqjs/cli/commit/b95826d8b7c9732137a225b20291a091ab1c5397))
+
 ## [1.8.2](https://github.com/icqqjs/cli/compare/v1.8.1...v1.8.2) (2026-06-22)
 
 
