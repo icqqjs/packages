@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Text, Box, useInput } from "ink";
 import type { Client } from "@icqqjs/icqq";
+import { spawn } from "node:child_process";
 import { Spinner } from "./Spinner.js";
 import { termLink } from "@/lib/parse-message.js";
+import { renderQrcodeAscii } from "@/lib/render-qrcode.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -39,6 +41,7 @@ export function LoginFlow({
   const [detail, setDetail] = useState("正在连接…");
   const [inputValue, setInputValue] = useState("");
   const [qrPath, setQrPath] = useState("");
+  const [qrLines, setQrLines] = useState<string[]>([]);
   const [verifyUrl, setVerifyUrl] = useState("");
   const [devicePhone, setDevicePhone] = useState("");
   const [inputMode, setInputMode] = useState<
@@ -90,10 +93,15 @@ export function LoginFlow({
       const qrFile = path.join(dataDir, "qrcode.png");
       await fs.mkdir(dataDir, { recursive: true });
       await fs.writeFile(qrFile, ev.image);
-      setQrPath(path.resolve(qrFile));
+      const resolved = path.resolve(qrFile);
+      setQrPath(resolved);
+      setQrLines(renderQrcodeAscii(ev.image));
       setPhase("qrcode");
       setInputMode("confirm");
       setInputValue("");
+      if (process.platform === "darwin") {
+        spawn("open", [resolved], { detached: true, stdio: "ignore" }).unref();
+      }
     };
 
     const onSlider = (ev: { url: string }) => {
@@ -220,15 +228,17 @@ export function LoginFlow({
           <Text bold color="yellow">
             ━━ 扫码登录 ━━
           </Text>
-          <Text>
-            二维码已保存到:{" "}
-            <Text color="cyan">{qrPath}</Text>
+          <Box flexDirection="column" marginY={1}>
+            {qrLines.map((line, i) => (
+              <Text key={i}>{line}</Text>
+            ))}
+          </Box>
+          <Text dimColor>
+            二维码文件: <Text color="cyan">{qrPath}</Text>
+            {process.platform === "darwin" ? "（已尝试用预览打开）" : ""}
           </Text>
-          {process.platform === "darwin" && (
-            <Text dimColor>macOS 可执行: open &quot;{qrPath}&quot;</Text>
-          )}
           <Text>
-            请打开手机 QQ → 右上角加号 / 扫一扫，在手机上确认登录
+            请打开手机 QQ → 扫一扫，在手机上确认登录
           </Text>
           <Box marginTop={1}>
             <Text color="green">确认后按回车继续: </Text>

@@ -1,27 +1,36 @@
-import { createRequire } from "node:module";
-import { register } from "node:module";
+import { createRequire, register } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 let installed = false;
 
+/** 从模块文件向上查找 package.json（dist/lib 需上溯到包根目录）。 */
+export function findPackageJsonPath(fromFileUrl: string | URL): string | null {
+  let dir = dirname(fileURLToPath(fromFileUrl));
+  for (;;) {
+    const candidate = join(dir, "package.json");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 /**
  * pnpm v11 全局安装时 @inkjs/ui 可能位于 store/links，无法解析其隐式依赖 react。
- * 在加载 pastel 前注册 resolve 钩子，将来自 @inkjs/ui 的 react 指向本包依赖树。
+ * 在加载 pastel 前注册 resolve 钩子，将 react 指向本包依赖树。
  */
 export function installPnpmReactResolveHook(): void {
   if (installed) return;
   installed = true;
 
-  const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const pkgJson = join(pkgRoot, "package.json");
-  if (!existsSync(pkgJson)) return;
+  const pkgJson = findPackageJsonPath(import.meta.url);
+  if (!pkgJson) return;
 
   let reactUrl: string;
   try {
-    const require = createRequire(pkgJson);
-    reactUrl = pathToFileURL(require.resolve("react")).href;
+    reactUrl = pathToFileURL(createRequire(pkgJson).resolve("react")).href;
   } catch {
     return;
   }
@@ -30,7 +39,7 @@ export function installPnpmReactResolveHook(): void {
 export async function resolve(specifier, context, nextResolve) {
   if (specifier === "react" || specifier.startsWith("react/")) {
     const parent = context.parentURL ?? "";
-    if (parent.includes("@inkjs/ui")) {
+    if (shouldRedirectReact(parent)) {
       if (specifier === "react") {
         return { url: ${JSON.stringify(reactUrl)}, shortCircuit: true };
       }
@@ -41,6 +50,14 @@ export async function resolve(specifier, context, nextResolve) {
     }
   }
   return nextResolve(specifier, context);
+}
+
+function shouldRedirectReact(parent) {
+  if (!parent) return false;
+  return (
+    !parent.includes("/node_modules/react/") &&
+    !parent.includes("\\\\node_modules\\\\react\\\\")
+  );
 }
 `;
 
