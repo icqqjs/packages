@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/icqqjs/cli/compare/v1.8.0...v1.8.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* update dependencies and enhance login flow ([2376ed5](https://github.com/icqqjs/cli/commit/2376ed509c56fbb07abdb3442051cc3688914670))
+
 ## [1.8.0](https://github.com/icqqjs/cli/compare/v1.7.2...v1.8.0) (2026-06-21)
 
 
