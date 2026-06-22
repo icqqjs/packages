@@ -8,7 +8,7 @@ import {
   ICQQ_SCOPE_REGISTRY_KEY,
 } from "../src/lib/pm-auth-compat.js";
 import { parseSemverMajor, isWithinSupportedMajorWindow } from "../src/lib/pm-version.js";
-import { githubInstallInvocation } from "../src/lib/icqq-install.js";
+import { githubInstallInvocation, ICQQ_PACKAGE } from "../src/lib/icqq-install.js";
 
 describe("pm-version", () => {
   it("parseSemverMajor", () => {
@@ -79,29 +79,31 @@ describe("pm-auth-compat", () => {
 
 describe("githubInstallInvocation versions", () => {
   it("pnpm 11 args are only add -g package", () => {
-    const { args, authProfile } = githubInstallInvocation("pnpm", { majorVersion: 11 });
-    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
+    const { args, authProfile } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, {
+      majorVersion: 11,
+    });
+    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
     expect(authProfile).toContain("pnpm@11");
   });
 
   it("pnpm 9 args", () => {
-    const { args } = githubInstallInvocation("pnpm", { majorVersion: 9 });
-    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
+    const { args } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, { majorVersion: 9 });
+    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
   });
 
   it("yarn 1 uses npm command", () => {
-    const { cmd } = githubInstallInvocation("yarn", { majorVersion: 1 });
+    const { cmd } = githubInstallInvocation("yarn", ICQQ_PACKAGE, { majorVersion: 1 });
     expect(cmd).toBe("npm");
   });
 
   it("yarn 4 uses yarn npm", () => {
-    const { cmd, args } = githubInstallInvocation("yarn", { majorVersion: 4 });
+    const { cmd, args } = githubInstallInvocation("yarn", ICQQ_PACKAGE, { majorVersion: 4 });
     expect(cmd).toBe("yarn");
     expect(args[0]).toBe("npm");
   });
 
   it("npm has registry flag", () => {
-    const { args } = githubInstallInvocation("npm", { majorVersion: 10 });
+    const { args } = githubInstallInvocation("npm", ICQQ_PACKAGE, { majorVersion: 10 });
     expect(args.some((a) => a.startsWith("--@icqqjs:registry="))).toBe(true);
   });
 });

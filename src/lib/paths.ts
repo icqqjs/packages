@@ -5,6 +5,7 @@
  *
  *   ~/.icqq/
  *     config.json          全局配置（0o600）
+ *     github.token         GitHub PAT
  *     .tmp/                临时文件目录
  *     <uin>/               各账号独立目录（0o700）
  *       daemon.pid         守护进程 PID
@@ -83,5 +84,9 @@ export function formatMcpUrl(endpoint: McpEndpointFile): string {
 
 export function getConfigPath(): string {
   return path.join(getIcqqHome(), "config.json");
+}
+
+export function getGithubTokenPath(): string {
+  return path.join(getIcqqHome(), "github.token");
 }
 

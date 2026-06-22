@@ -2,7 +2,7 @@ import zod from "zod";
 import { option } from "pastel";
 import { IcqqGithubPackageFlow } from "@/components/IcqqGithubPackageFlow.js";
 
-export const description = "检查并安装 @icqqjs/icqq 依赖（不修改 ~/.npmrc）";
+export const description = "升级 @icqqjs/icqq 到最新版本";
 
 export const options = zod.object({
   token: zod
@@ -21,15 +21,15 @@ type Props = {
   options: zod.infer<typeof options>;
 };
 
-export default function Setup({ options: cliOptions }: Props) {
+export default function Update({ options: cliOptions }: Props) {
   return (
     <IcqqGithubPackageFlow
-      title="icqq setup"
-      mode="setup"
+      title="icqq update"
+      mode="update"
       tokenOption={cliOptions.token}
-      readyMessage="✓ 完成：@icqqjs/icqq 已可正常加载。"
-      doneMessage="✓ 完成：可以运行 icqq login 了。"
-      retryCommand="icqq setup"
+      readyMessage="✓ @icqqjs/icqq 已是最新可用版本。"
+      doneMessage="✓ 完成：@icqqjs/icqq 已升级。"
+      retryCommand="icqq update"
     />
   );
 }

@@ -1,15 +1,21 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   IcqqInstallError,
+  ICQQ_PACKAGE,
   classifyInstallFailure,
   detectPackageManager,
   formatInstallEnvironment,
   formatGithubInstallCommand,
+  formatPublicInstallCommand,
   githubInstallInvocation,
+  publicInstallInvocation,
   discoverIcqq,
   resolveSetupToken,
+  resolveSetupTokenWithSource,
   runGithubPackagesGlobalInstall,
+  runPublicRegistryGlobalInstall,
   summarizeInstallFailure,
+  CLI_PACKAGE,
 } from "../src/lib/icqq-install.js";
 
 type ChildProcessOverrides = {
@@ -64,8 +70,8 @@ afterEach(() => {
 
 describe("icqq-install", () => {
   it("github install pnpm uses env only (no broken --config placeholders)", () => {
-    const { args } = githubInstallInvocation("pnpm", { majorVersion: 11 });
-    expect(args).toEqual(["add", "-g", "@icqqjs/icqq"]);
+    const { args } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, { majorVersion: 11 });
+    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
     expect(args.join(" ")).not.toContain("${GITHUB_TOKEN}");
   });
 
@@ -104,16 +110,24 @@ describe("icqq-install", () => {
   });
 
   it("builds install invocations for yarn and cnpm variants", () => {
-    expect(githubInstallInvocation("yarn", { majorVersion: 1 }).cmd).toBe("npm");
-    expect(githubInstallInvocation("yarn", { majorVersion: 3 }).args.slice(0, 4)).toEqual([
-      "npm",
-      "install",
-      "-g",
-      "@icqqjs/icqq",
-    ]);
-    expect(githubInstallInvocation("cnpm", { majorVersion: 9 }).cmd).toBe("cnpm");
-    expect(formatGithubInstallCommand("npm", { majorVersion: 10 })).toContain(
+    expect(githubInstallInvocation("yarn", ICQQ_PACKAGE, { majorVersion: 1 }).cmd).toBe("npm");
+    expect(
+      githubInstallInvocation("yarn", ICQQ_PACKAGE, { majorVersion: 3 }).args.slice(0, 4),
+    ).toEqual(["npm", "install", "-g", ICQQ_PACKAGE]);
+    expect(githubInstallInvocation("cnpm", ICQQ_PACKAGE, { majorVersion: 9 }).cmd).toBe("cnpm");
+    expect(formatGithubInstallCommand("npm", ICQQ_PACKAGE, { majorVersion: 10 })).toContain(
       "npm install -g @icqqjs/icqq",
+    );
+  });
+
+  it("builds public registry cli upgrade command", () => {
+    expect(publicInstallInvocation("pnpm", CLI_PACKAGE, { majorVersion: 11 }).args).toEqual([
+      "add",
+      "-g",
+      `${CLI_PACKAGE}@latest`,
+    ]);
+    expect(formatPublicInstallCommand("npm", CLI_PACKAGE, { majorVersion: 10 })).toContain(
+      "npm install -g @icqqjs/cli@latest",
     );
   });
 

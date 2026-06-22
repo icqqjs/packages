@@ -18,6 +18,13 @@ icqq setup --token <PAT>          # 或预先提供 PAT
 export GITHUB_TOKEN=<PAT> && icqq setup
 ```
 
+交互输入的 GitHub Token 会保存到 `~/.icqq/github.token`（权限 600），供后续 `icqq update` 使用。
+
+```bash
+icqq update                       # 升级 @icqqjs/icqq（自动读取已保存 Token）
+icqq cli-update                   # 升级 @icqqjs/cli（npmjs 公网源，无需 Token）
+```
+
 <details>
 <summary>手动安装（不修改 ~/.npmrc）</summary>
 

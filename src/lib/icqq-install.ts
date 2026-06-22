@@ -1,6 +1,7 @@
 /**
  * 全局安装 @icqqjs/icqq，不修改 ~/.npmrc。
  */
+import { readFileSync } from "node:fs";
 import { execFileSync, execSync } from "node:child_process";
 import {
   buildAuthEnv,
@@ -24,6 +25,10 @@ import {
   resolveIcqqEntryPath,
   resolveIcqqPackageRoot,
 } from "./icqq-resolve.js";
+import { getGithubTokenPath } from "./paths.js";
+
+export const ICQQ_PACKAGE = "@icqqjs/icqq";
+export const CLI_PACKAGE = "@icqqjs/cli";
 
 export {
   ICQQ_GITHUB_REGISTRY,
@@ -69,13 +74,43 @@ export function detectPackageManager(): PackageManager {
   return "npm";
 }
 
-/** CLI --token 或环境变量 GITHUB_TOKEN */
+export type SetupTokenSource =
+  | "flag"
+  | "env-github"
+  | "env-icqq"
+  | "saved"
+  | null;
+
+export type ResolvedSetupToken = {
+  token?: string;
+  source: SetupTokenSource;
+};
+
+/** CLI --token、环境变量或 ~/.icqq/github.token */
+export function resolveSetupTokenWithSource(
+  explicit?: string,
+): ResolvedSetupToken {
+  if (explicit?.trim()) {
+    return { token: explicit.trim(), source: "flag" };
+  }
+  if (process.env.GITHUB_TOKEN?.trim()) {
+    return { token: process.env.GITHUB_TOKEN.trim(), source: "env-github" };
+  }
+  if (process.env.ICQQ_GITHUB_TOKEN?.trim()) {
+    return { token: process.env.ICQQ_GITHUB_TOKEN.trim(), source: "env-icqq" };
+  }
+  try {
+    const saved = readFileSync(getGithubTokenPath(), "utf-8").trim();
+    if (saved) return { token: saved, source: "saved" };
+  } catch {
+    /* no saved token */
+  }
+  return { source: null };
+}
+
+/** CLI --token、环境变量 GITHUB_TOKEN 或已保存的 PAT */
 export function resolveSetupToken(explicit?: string): string | undefined {
-  const t =
-    explicit?.trim() ||
-    process.env.GITHUB_TOKEN?.trim() ||
-    process.env.ICQQ_GITHUB_TOKEN?.trim();
-  return t || undefined;
+  return resolveSetupTokenWithSource(explicit).token;
 }
 
 export type IcqqDiscovery = {
@@ -149,9 +184,10 @@ export async function discoverIcqq(
 /** 用于日志展示的安装命令（不含 Token，单行） */
 export function formatGithubInstallCommand(
   pm: PackageManager,
+  packageName: string = ICQQ_PACKAGE,
   options?: InstallInvocationOptions,
 ): string {
-  const { cmd, args } = githubInstallInvocation(pm, options);
+  const { cmd, args } = githubInstallInvocation(pm, packageName, options);
   return [cmd, ...args].join(" ");
 }
 
@@ -200,31 +236,48 @@ function resolveMajor(
   return getPackageManagerMajor(pm);
 }
 
-function installSubcommand(pm: PackageManager, yarnMajor: number | null): {
+function installSubcommand(
+  pm: PackageManager,
+  packageName: string,
+  yarnMajor: number | null,
+): {
   cmd: string;
   args: string[];
 } {
   switch (pm) {
     case "pnpm":
-      return { cmd: "pnpm", args: ["add", "-g", "@icqqjs/icqq"] };
+      return { cmd: "pnpm", args: ["add", "-g", packageName] };
     case "cnpm":
-      return { cmd: "cnpm", args: ["install", "-g", "@icqqjs/icqq"] };
+      return { cmd: "cnpm", args: ["install", "-g", packageName] };
     case "yarn":
-      // Yarn 1 无可靠的不落盘 registry 全局安装；Yarn 2+ 用 yarn npm
       if (yarnMajor !== null && yarnMajor >= 2) {
         return {
           cmd: "yarn",
-          args: ["npm", "install", "-g", "@icqqjs/icqq"],
+          args: ["npm", "install", "-g", packageName],
         };
       }
       return {
         cmd: "npm",
-        args: ["install", "-g", "@icqqjs/icqq"],
+        args: ["install", "-g", packageName],
       };
     case "npm":
     default:
-      return { cmd: "npm", args: ["install", "-g", "@icqqjs/icqq"] };
+      return { cmd: "npm", args: ["install", "-g", packageName] };
   }
+}
+
+function publicInstallSubcommand(
+  pm: PackageManager,
+  packageName: string,
+  yarnMajor: number | null,
+): {
+  cmd: string;
+  args: string[];
+} {
+  const withLatest = packageName.includes("@latest")
+    ? packageName
+    : `${packageName}@latest`;
+  return installSubcommand(pm, withLatest, yarnMajor);
 }
 
 /** Yarn 1 全局安装走 npm 子进程，认证与参数按 npm 处理 */
@@ -235,12 +288,13 @@ function effectiveAuthPm(pm: PackageManager, major: number | null): PackageManag
 
 export function githubInstallInvocation(
   pm: PackageManager,
+  packageName: string = ICQQ_PACKAGE,
   options?: InstallInvocationOptions,
 ): GithubInstallInvocation {
   const major = resolveMajor(pm, options);
   const yarnMajor = pm === "yarn" ? major : null;
   const authPm = effectiveAuthPm(pm, major);
-  const { cmd, args: baseArgs } = installSubcommand(pm, yarnMajor);
+  const { cmd, args: baseArgs } = installSubcommand(pm, packageName, yarnMajor);
   const extra = buildInstallExtraArgs(authPm, authPm === pm ? major : getPackageManagerMajor("npm"));
   const authProfile = describeAuthCompat(pm, major);
 
@@ -250,6 +304,28 @@ export function githubInstallInvocation(
     authProfile,
     majorVersion: major,
   };
+}
+
+export function publicInstallInvocation(
+  pm: PackageManager,
+  packageName: string = CLI_PACKAGE,
+  options?: InstallInvocationOptions,
+): { cmd: string; args: string[]; majorVersion: number | null } {
+  const major = resolveMajor(pm, options);
+  const yarnMajor = pm === "yarn" ? major : null;
+  return {
+    ...publicInstallSubcommand(pm, packageName, yarnMajor),
+    majorVersion: major,
+  };
+}
+
+export function formatPublicInstallCommand(
+  pm: PackageManager,
+  packageName: string = CLI_PACKAGE,
+  options?: InstallInvocationOptions,
+): string {
+  const { cmd, args } = publicInstallInvocation(pm, packageName, options);
+  return [cmd, ...args].join(" ");
 }
 
 export function classifyInstallFailure(detail: string): InstallFailureKind {
@@ -288,13 +364,14 @@ function pmVersionWarning(pm: PackageManager, major: number | null): string | nu
 function execGithubInstall(
   pm: PackageManager,
   token: string,
+  packageName: string = ICQQ_PACKAGE,
   options?: InstallInvocationOptions,
 ): void {
   const major = resolveMajor(pm, options);
   const authPm = effectiveAuthPm(pm, major);
   const authMajor =
     authPm === pm ? major : getPackageManagerMajor("npm");
-  const { cmd, args, authProfile } = githubInstallInvocation(pm, {
+  const { cmd, args, authProfile } = githubInstallInvocation(pm, packageName, {
     majorVersion: major,
   });
   const env = {
@@ -332,16 +409,17 @@ function execGithubInstall(
 export function runGithubPackagesGlobalInstall(
   pm: PackageManager,
   token: string,
+  packageName: string = ICQQ_PACKAGE,
 ): void {
   try {
-    execGithubInstall(pm, token);
+    execGithubInstall(pm, token, packageName);
   } catch (e: unknown) {
     if (
       e instanceof IcqqInstallError &&
       shouldFallbackToNpm(pm, e.kind)
     ) {
       try {
-        execGithubInstall("npm", token);
+        execGithubInstall("npm", token, packageName);
         return;
       } catch (fallbackErr: unknown) {
         if (fallbackErr instanceof IcqqInstallError) {
@@ -353,6 +431,60 @@ export function runGithubPackagesGlobalInstall(
         }
         throw fallbackErr;
       }
+    }
+    throw e;
+  }
+}
+
+function execPublicInstall(
+  pm: PackageManager,
+  packageName: string = CLI_PACKAGE,
+  options?: InstallInvocationOptions,
+): void {
+  const major = resolveMajor(pm, options);
+  const { cmd, args } = publicInstallInvocation(pm, packageName, {
+    majorVersion: major,
+  });
+  const warn = pmVersionWarning(pm, major);
+
+  try {
+    execFileSync(cmd, args, {
+      stdio: ["inherit", "inherit", "pipe"],
+      timeout: 120_000,
+      env: process.env,
+    });
+  } catch (e: unknown) {
+    const err = e as { stderr?: Buffer | string; message?: string };
+    const detail =
+      (typeof err.stderr === "string"
+        ? err.stderr
+        : err.stderr?.toString("utf8")) ||
+      err.message ||
+      String(e);
+    const kind = classifyInstallFailure(detail);
+    const fullDetail = [warn, detail].filter(Boolean).join("\n");
+    throw new IcqqInstallError(
+      summarizeInstallFailure(kind, detail),
+      kind,
+      fullDetail,
+    );
+  }
+}
+
+/** 从 npmjs 等公网 registry 全局升级包（如 @icqqjs/cli） */
+export function runPublicRegistryGlobalInstall(
+  pm: PackageManager,
+  packageName: string = CLI_PACKAGE,
+): void {
+  try {
+    execPublicInstall(pm, packageName);
+  } catch (e: unknown) {
+    if (
+      e instanceof IcqqInstallError &&
+      shouldFallbackToNpm(pm, e.kind)
+    ) {
+      execPublicInstall("npm", packageName);
+      return;
     }
     throw e;
   }
