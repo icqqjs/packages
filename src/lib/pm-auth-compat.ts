@@ -78,7 +78,7 @@ export function buildAuthEnv(
 
 /**
  * 安装命令额外 CLI 参数。
- * pnpm：registry + auth 仅用 env（见 buildAuthEnv），避免错误 --config 拼接。
+ * pnpm：scope registry 用 CLI（pnpm 11 不读 npm_config_*，env 键 @icqqjs:registry 亦无效）。
  * npm/cnpm/yarn：使用 npm 系 `--@icqqjs:registry=` 写法。
  */
 export function buildInstallExtraArgs(
@@ -86,9 +86,10 @@ export function buildInstallExtraArgs(
   _major: number | null,
 ): string[] {
   const regFlag = `--${ICQQ_SCOPE_REGISTRY_KEY}=${ICQQ_GITHUB_REGISTRY}`;
+  const pnpmRegFlag = `--config.${ICQQ_SCOPE_REGISTRY_KEY}=${ICQQ_GITHUB_REGISTRY}`;
   switch (pm) {
     case "pnpm":
-      return [];
+      return [pnpmRegFlag];
     case "cnpm":
     case "yarn":
     case "npm":
@@ -127,12 +128,16 @@ export function describeAuthCompat(pm: PackageManager, major: number | null): st
   }
 }
 
-/** 安装失败时是否值得换用 npm 再试（pnpm/yarn/cnpm 认证失败） */
+/** 安装失败时是否值得换用 npm 再试（pnpm/yarn/cnpm 认证或 registry 未生效） */
 export function shouldFallbackToNpm(
   primary: PackageManager,
   kind: "auth" | "other",
+  detail?: string,
 ): boolean {
-  return kind === "auth" && primary !== "npm";
+  if (primary === "npm") return false;
+  if (kind === "auth") return true;
+  if (detail && isWrongRegistry404(detail)) return true;
+  return false;
 }
 
 /** 404 且请求落在 npmjs → 多半是 scope registry 未生效 */

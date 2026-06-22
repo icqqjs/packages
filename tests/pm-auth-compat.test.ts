@@ -43,8 +43,10 @@ describe("pm-auth-compat", () => {
     expect(env["pnpm_config_//npm.pkg.github.com/:_authToken"]).toBeUndefined();
   });
 
-  it("pnpm install has no --config CLI args", () => {
-    expect(buildInstallExtraArgs("pnpm", 11)).toEqual([]);
+  it("pnpm install uses --config scope registry flag", () => {
+    expect(buildInstallExtraArgs("pnpm", 11)).toEqual([
+      "--config.@icqqjs:registry=https://npm.pkg.github.com",
+    ]);
   });
 
   it("npm install uses --@icqqjs:registry flag", () => {
@@ -65,6 +67,19 @@ describe("pm-auth-compat", () => {
     expect(shouldFallbackToNpm("npm", "auth")).toBe(false);
   });
 
+  it("shouldFallbackToNpm on wrong registry 404", () => {
+    expect(
+      shouldFallbackToNpm(
+        "pnpm",
+        "other",
+        "GET https://registry.npmjs.org/@icqqjs%2Ficqq: Not Found - 404",
+      ),
+    ).toBe(true);
+    expect(shouldFallbackToNpm("npm", "other", "404 registry.npmjs.org @icqqjs")).toBe(
+      false,
+    );
+  });
+
   it("isWrongRegistry404", () => {
     expect(
       isWrongRegistry404(
@@ -78,17 +93,27 @@ describe("pm-auth-compat", () => {
 });
 
 describe("githubInstallInvocation versions", () => {
-  it("pnpm 11 args are only add -g package", () => {
+  it("pnpm 11 args include scope registry config flag", () => {
     const { args, authProfile } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, {
       majorVersion: 11,
     });
-    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
+    expect(args).toEqual([
+      "add",
+      "-g",
+      ICQQ_PACKAGE,
+      "--config.@icqqjs:registry=https://npm.pkg.github.com",
+    ]);
     expect(authProfile).toContain("pnpm@11");
   });
 
   it("pnpm 9 args", () => {
     const { args } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, { majorVersion: 9 });
-    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
+    expect(args).toEqual([
+      "add",
+      "-g",
+      ICQQ_PACKAGE,
+      "--config.@icqqjs:registry=https://npm.pkg.github.com",
+    ]);
   });
 
   it("yarn 1 uses npm command", () => {

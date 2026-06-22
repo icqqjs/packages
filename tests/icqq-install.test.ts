@@ -75,7 +75,12 @@ afterEach(() => {
 describe("icqq-install", () => {
   it("github install pnpm uses env only (no broken --config placeholders)", () => {
     const { args } = githubInstallInvocation("pnpm", ICQQ_PACKAGE, { majorVersion: 11 });
-    expect(args).toEqual(["add", "-g", ICQQ_PACKAGE]);
+    expect(args).toEqual([
+      "add",
+      "-g",
+      ICQQ_PACKAGE,
+      "--config.@icqqjs:registry=https://npm.pkg.github.com",
+    ]);
     expect(args.join(" ")).not.toContain("${GITHUB_TOKEN}");
   });
 
@@ -357,6 +362,32 @@ describe("icqq-install", () => {
       expect.any(Object),
     ]);
     expect(spawnSyncMock.mock.calls.some((call) => call[1]?.[0] === "add")).toBe(true);
+    const addCall = spawnSyncMock.mock.calls.find((call) => call[1]?.[0] === "add");
+    expect(addCall?.[2]?.env?.NPM_CONFIG_USERCONFIG).toBeTruthy();
+  });
+
+  it("falls back to npm when pnpm hits wrong registry 404", async () => {
+    const { mod, spawnSyncMock } = await loadIcqqInstallWithMocks({
+      childProcess: {
+        spawnSyncImpl: (cmd) => {
+          if (cmd === "pnpm") {
+            return {
+              status: 1,
+              stdout:
+                "GET https://registry.npmjs.org/@icqqjs%2Ficqq: Not Found - 404",
+              stderr: "",
+            };
+          }
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      },
+      pmVersion: {
+        getPackageManagerMajor: vi.fn((pm: string) => (pm === "pnpm" ? 11 : 10)),
+      },
+    });
+
+    expect(() => mod.runGithubPackagesGlobalInstall("pnpm", "token-4")).not.toThrow();
+    expect(spawnSyncMock.mock.calls.some((call) => call[0] === "npm")).toBe(true);
   });
 
   it("formats install environment with compatibility warning", async () => {

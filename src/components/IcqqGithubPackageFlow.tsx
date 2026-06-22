@@ -176,7 +176,7 @@ export function IcqqGithubPackageFlow({
       pushLog(installStep);
       pushLog(`   → 执行：${installCmd}`);
       pushLog(`   → 环境：${formatInstallEnvironment(pm)}`);
-      pushLog("   → 认证：GITHUB_TOKEN + npm/pnpm_config env（不写入 ~/.npmrc）");
+      pushLog("   → 认证：临时 userconfig + GITHUB_TOKEN env（不修改 ~/.npmrc）");
       if (reinstall) {
         pushLog("   → 检测到全局登记但无法加载，将先卸载再重装", "warn");
       }

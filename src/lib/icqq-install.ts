@@ -26,6 +26,7 @@ import {
   resolveIcqqPackageRoot,
 } from "./icqq-resolve.js";
 import { getGithubTokenPath } from "./paths.js";
+import { buildEphemeralNpmrcEnv } from "./ephemeral-npmrc.js";
 
 export const ICQQ_PACKAGE = "@icqqjs/icqq";
 export const CLI_PACKAGE = "@icqqjs/cli";
@@ -522,12 +523,17 @@ function execGithubInstall(
   const { cmd, args, authProfile } = githubInstallInvocation(pm, packageName, {
     majorVersion: major,
   });
-  const env = {
-    ...process.env,
-    ...buildAuthEnv(authPm, token, authMajor),
-  };
-
-  execPmOrThrow(cmd, args, env, pm, major, authProfile);
+  const { env: npmrcEnv, cleanup } = buildEphemeralNpmrcEnv(token);
+  try {
+    const env = {
+      ...process.env,
+      ...buildAuthEnv(authPm, token, authMajor),
+      ...npmrcEnv,
+    };
+    execPmOrThrow(cmd, args, env, pm, major, authProfile);
+  } finally {
+    cleanup();
+  }
 }
 
 /** 使用 GitHub Packages 全局安装（不修改 ~/.npmrc）；认证失败时对非 npm 再试 npm */
@@ -565,7 +571,7 @@ export function runGithubPackagesGlobalInstall(
 
     if (
       e instanceof IcqqInstallError &&
-      shouldFallbackToNpm(pm, e.kind)
+      shouldFallbackToNpm(pm, e.kind, e.detail)
     ) {
       try {
         if (reinstall) {
@@ -611,7 +617,7 @@ export function runPublicRegistryGlobalInstall(
   } catch (e: unknown) {
     if (
       e instanceof IcqqInstallError &&
-      shouldFallbackToNpm(pm, e.kind)
+      shouldFallbackToNpm(pm, e.kind, e.detail)
     ) {
       execPublicInstall("npm", packageName);
       return;
