@@ -2,7 +2,7 @@
  * 全局安装 @icqqjs/icqq，不修改 ~/.npmrc。
  */
 import { readFileSync } from "node:fs";
-import { execFileSync, execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import {
   buildAuthEnv,
   buildInstallExtraArgs,
@@ -116,12 +116,117 @@ export function resolveSetupToken(explicit?: string): string | undefined {
 export type IcqqDiscovery = {
   found: boolean;
   path: string | null;
+  /** 包管理器全局列表有记录但运行时加载不到 */
+  listedButUnloadable: boolean;
+};
+
+export type GithubInstallOptions = {
+  /** 安装前先全局卸载（修复 pnpm 全局登记但无法加载） */
+  reinstall?: boolean;
 };
 
 export type InstallInvocationOptions = {
   /** 测试注入：跳过 `pm --version` 探测 */
   majorVersion?: number | null;
 };
+
+type PmExecOutcome = {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+};
+
+/** 运行包管理器命令：stdout/stderr 回显到终端并一并捕获（pnpm 常把错误写到 stdout）。 */
+function runPmCommandSync(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  timeout = 120_000,
+): PmExecOutcome {
+  const result = spawnSync(cmd, args, {
+    env,
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "pipe"],
+    timeout,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return { stdout, stderr, status: result.status };
+}
+
+/** 从包管理器输出中提取可读错误行 */
+export function extractInstallFailureDetail(detail: string): string {
+  const lines = detail
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter(
+      (l) =>
+        !/^command failed:/i.test(l) &&
+        !/^认证策略：/.test(l) &&
+        !/不在最近维护的大版本窗口/.test(l),
+    );
+
+  const errLine = lines.find((l) =>
+    /ERR_|npm ERR!|error|401|403|unauthorized|forbidden|ENOENT|EACCES/i.test(l),
+  );
+  if (errLine) return errLine.slice(0, 300);
+
+  const last = lines.at(-1);
+  if (last && !/^pnpm|^npm|^yarn|^cnpm/.test(last)) return last.slice(0, 300);
+
+  return lines.join(" ").slice(0, 300) || detail.slice(0, 300);
+}
+
+function pmCommandFailureDetail(
+  cmd: string,
+  args: string[],
+  outcome: PmExecOutcome,
+): string {
+  return [outcome.stdout, outcome.stderr]
+    .filter(Boolean)
+    .join("\n")
+    .trim() || `Command failed: ${cmd} ${args.join(" ")}`;
+}
+
+function throwInstallFailure(
+  pm: PackageManager,
+  major: number | null,
+  authProfile: string | undefined,
+  detail: string,
+): never {
+  const kind = classifyInstallFailure(detail);
+  const hint = pmVersionWarning(pm, major);
+  const profileNote = authProfile ? `认证策略：${authProfile}` : undefined;
+  const fullDetail = [hint, profileNote, detail].filter(Boolean).join("\n");
+  throw new IcqqInstallError(
+    summarizeInstallFailure(kind, detail),
+    kind,
+    fullDetail,
+  );
+}
+
+function execPmOrThrow(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  pm: PackageManager,
+  major: number | null,
+  authProfile?: string,
+): void {
+  const outcome = runPmCommandSync(cmd, args, env);
+  if (outcome.status === 0) return;
+  throwInstallFailure(pm, major, authProfile, pmCommandFailureDetail(cmd, args, outcome));
+}
 
 export type GithubInstallInvocation = {
   cmd: string;
@@ -144,7 +249,7 @@ export async function discoverIcqq(
   if (await isIcqqAvailable()) {
     const p = await getIcqqPath();
     say(p ? `   → 可以加载（${p}）` : "   → 可以加载");
-    return { found: true, path: p };
+    return { found: true, path: p, listedButUnloadable: false };
   }
   say("   → 当前无法加载");
 
@@ -178,7 +283,7 @@ export async function discoverIcqq(
   } else {
     say("   → 结论：需要安装");
   }
-  return { found: false, path: onDisk };
+  return { found: false, path: onDisk, listedButUnloadable };
 }
 
 /** 用于日志展示的安装命令（不含 Token，单行） */
@@ -266,6 +371,43 @@ function installSubcommand(
   }
 }
 
+function removeGlobalInvocation(
+  pm: PackageManager,
+  packageName: string,
+  yarnMajor: number | null,
+): { cmd: string; args: string[] } {
+  switch (pm) {
+    case "pnpm":
+      return { cmd: "pnpm", args: ["remove", "-g", packageName] };
+    case "cnpm":
+      return { cmd: "cnpm", args: ["uninstall", "-g", packageName] };
+    case "yarn":
+      if (yarnMajor !== null && yarnMajor >= 2) {
+        return { cmd: "yarn", args: ["global", "remove", packageName] };
+      }
+      return { cmd: "npm", args: ["uninstall", "-g", packageName] };
+    case "npm":
+    default:
+      return { cmd: "npm", args: ["uninstall", "-g", packageName] };
+  }
+}
+
+/** 全局卸载包（失败时忽略，用于重装前清理） */
+export function removeGlobalPackage(
+  pm: PackageManager,
+  packageName: string,
+  options?: InstallInvocationOptions,
+): void {
+  const major = resolveMajor(pm, options);
+  const yarnMajor = pm === "yarn" ? major : null;
+  const { cmd, args } = removeGlobalInvocation(pm, packageName, yarnMajor);
+  try {
+    runPmCommandSync(cmd, args, process.env);
+  } catch {
+    /* 未安装或卸载失败均可继续 */
+  }
+}
+
 function publicInstallSubcommand(
   pm: PackageManager,
   packageName: string,
@@ -348,10 +490,16 @@ export function summarizeInstallFailure(
     return "安装失败：请求到了 npmjs.org 而非 GitHub Packages，请确认 @icqqjs scope registry 已生效。";
   }
   if (kind === "auth") {
+    const extracted = extractInstallFailureDetail(detail);
+    if (extracted && /ERR_|401|403|unauthorized|forbidden/i.test(extracted)) {
+      return `认证失败：${extracted}`;
+    }
     return "认证失败：Token 无效、已过期或缺少 read:packages 权限。";
   }
-  const first = detail.split("\n").find((l) => l.trim())?.trim();
-  return first ? `安装失败：${first.slice(0, 200)}` : "安装失败，请检查网络与包管理器配置。";
+  const extracted = extractInstallFailureDetail(detail);
+  return extracted.startsWith("安装失败")
+    ? extracted
+    : `安装失败：${extracted}`;
 }
 
 function pmVersionWarning(pm: PackageManager, major: number | null): string | null {
@@ -379,30 +527,7 @@ function execGithubInstall(
     ...buildAuthEnv(authPm, token, authMajor),
   };
 
-  try {
-    execFileSync(cmd, args, {
-      stdio: ["inherit", "inherit", "pipe"],
-      timeout: 120_000,
-      env,
-    });
-  } catch (e: unknown) {
-    const err = e as { stderr?: Buffer | string; message?: string };
-    const detail =
-      (typeof err.stderr === "string"
-        ? err.stderr
-        : err.stderr?.toString("utf8")) ||
-      err.message ||
-      String(e);
-    const kind = classifyInstallFailure(detail);
-    const hint = pmVersionWarning(pm, major);
-    const profileNote = `认证策略：${authProfile}`;
-    const fullDetail = [hint, profileNote, detail].filter(Boolean).join("\n");
-    throw new IcqqInstallError(
-      summarizeInstallFailure(kind, detail),
-      kind,
-      fullDetail,
-    );
-  }
+  execPmOrThrow(cmd, args, env, pm, major, authProfile);
 }
 
 /** 使用 GitHub Packages 全局安装（不修改 ~/.npmrc）；认证失败时对非 npm 再试 npm */
@@ -410,15 +535,42 @@ export function runGithubPackagesGlobalInstall(
   pm: PackageManager,
   token: string,
   packageName: string = ICQQ_PACKAGE,
+  options?: GithubInstallOptions,
 ): void {
+  const reinstall = options?.reinstall ?? false;
+
+  const installOnce = (targetPm: PackageManager) => {
+    if (reinstall) {
+      removeGlobalPackage(targetPm, packageName);
+    }
+    execGithubInstall(targetPm, token, packageName);
+  };
+
   try {
-    execGithubInstall(pm, token, packageName);
+    installOnce(pm);
   } catch (e: unknown) {
+    if (
+      e instanceof IcqqInstallError &&
+      e.kind !== "auth" &&
+      !reinstall
+    ) {
+      removeGlobalPackage(pm, packageName);
+      try {
+        execGithubInstall(pm, token, packageName);
+        return;
+      } catch (retryErr) {
+        e = retryErr;
+      }
+    }
+
     if (
       e instanceof IcqqInstallError &&
       shouldFallbackToNpm(pm, e.kind)
     ) {
       try {
+        if (reinstall) {
+          removeGlobalPackage("npm", packageName);
+        }
         execGithubInstall("npm", token, packageName);
         return;
       } catch (fallbackErr: unknown) {
@@ -445,30 +597,8 @@ function execPublicInstall(
   const { cmd, args } = publicInstallInvocation(pm, packageName, {
     majorVersion: major,
   });
-  const warn = pmVersionWarning(pm, major);
 
-  try {
-    execFileSync(cmd, args, {
-      stdio: ["inherit", "inherit", "pipe"],
-      timeout: 120_000,
-      env: process.env,
-    });
-  } catch (e: unknown) {
-    const err = e as { stderr?: Buffer | string; message?: string };
-    const detail =
-      (typeof err.stderr === "string"
-        ? err.stderr
-        : err.stderr?.toString("utf8")) ||
-      err.message ||
-      String(e);
-    const kind = classifyInstallFailure(detail);
-    const fullDetail = [warn, detail].filter(Boolean).join("\n");
-    throw new IcqqInstallError(
-      summarizeInstallFailure(kind, detail),
-      kind,
-      fullDetail,
-    );
-  }
+  execPmOrThrow(cmd, args, process.env, pm, major);
 }
 
 /** 从 npmjs 等公网 registry 全局升级包（如 @icqqjs/cli） */

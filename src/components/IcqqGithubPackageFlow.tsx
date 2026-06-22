@@ -93,6 +93,7 @@ export function IcqqGithubPackageFlow({
   const [pm, setPm] = useState<PackageManager>("npm");
   const [activeToken, setActiveToken] = useState("");
   const [tokenInput, setTokenInput] = useState("");
+  const [reinstall, setReinstall] = useState(false);
   const [fatalMessage, setFatalMessage] = useState("");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logsRef = useRef<LogEntry[]>([]);
@@ -151,6 +152,7 @@ export function IcqqGithubPackageFlow({
       if (mode === "setup") {
         pushLog("② 查找 @icqqjs/icqq …");
         const found = await discoverIcqq((msg) => pushLog(msg));
+        setReinstall(found.listedButUnloadable);
         if (found.found) {
           await getIcqqPath();
           pushLog("   → 已可正常加载，跳过安装", "ok");
@@ -175,9 +177,12 @@ export function IcqqGithubPackageFlow({
       pushLog(`   → 执行：${installCmd}`);
       pushLog(`   → 环境：${formatInstallEnvironment(pm)}`);
       pushLog("   → 认证：GITHUB_TOKEN + npm/pnpm_config env（不写入 ~/.npmrc）");
+      if (reinstall) {
+        pushLog("   → 检测到全局登记但无法加载，将先卸载再重装", "warn");
+      }
       pushLog("   → 下方为包管理器输出：");
       try {
-        runGithubPackagesGlobalInstall(pm, activeToken, ICQQ_PACKAGE);
+        runGithubPackagesGlobalInstall(pm, activeToken, ICQQ_PACKAGE, { reinstall });
         pushLog("   → 安装命令已结束", "ok");
 
         pushLog(verifyStep);
@@ -209,13 +214,19 @@ export function IcqqGithubPackageFlow({
               ? e.message
               : String(e);
         pushLog(`   → ${msg}`, "err");
+        if (e instanceof IcqqInstallError && e.detail) {
+          for (const line of e.detail.split("\n").filter(Boolean).slice(-6)) {
+            if (line.startsWith("认证策略：")) continue;
+            pushLog(`   │ ${line}`, "err");
+          }
+        }
         setFatalMessage(
           `${msg}\n\n可检查网络、包管理器是否可用，或稍后重试 ${retryCommand}。`,
         );
         setPhase("fatal");
       }
     })();
-  }, [phase, pm, activeToken, mode, pushLog, enterNeedToken, retryCommand]);
+  }, [phase, pm, activeToken, mode, reinstall, pushLog, enterNeedToken, retryCommand]);
 
   useEffect(() => {
     if (phase === "ready" || phase === "done") finish();

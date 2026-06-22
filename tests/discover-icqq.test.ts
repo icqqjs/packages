@@ -49,7 +49,7 @@ describe("discoverIcqq", () => {
     mocks.getIcqqPath.mockResolvedValue("/opt/icqq");
 
     const result = await discoverIcqq();
-    expect(result).toEqual({ found: true, path: "/opt/icqq" });
+    expect(result).toEqual({ found: true, path: "/opt/icqq", listedButUnloadable: false });
   });
 
   it("returns not found when only listed in pnpm global (ghost install)", async () => {
@@ -64,6 +64,7 @@ describe("discoverIcqq", () => {
     const result = await discoverIcqq((m) => logs.push(m));
 
     expect(result.found).toBe(false);
+    expect(result.listedButUnloadable).toBe(true);
     expect(logs.some((l) => l.includes("pnpm 列表中有"))).toBe(true);
     expect(logs.some((l) => l.includes("重新安装"))).toBe(true);
   });

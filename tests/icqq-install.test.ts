@@ -14,13 +14,14 @@ import {
   resolveSetupTokenWithSource,
   runGithubPackagesGlobalInstall,
   runPublicRegistryGlobalInstall,
+  extractInstallFailureDetail,
   summarizeInstallFailure,
   CLI_PACKAGE,
 } from "../src/lib/icqq-install.js";
 
 type ChildProcessOverrides = {
   execSyncImpl?: (command: string, options?: unknown) => unknown;
-  execFileSyncImpl?: (cmd: string, args: string[], options?: unknown) => unknown;
+  spawnSyncImpl?: (cmd: string, args: string[], options?: unknown) => unknown;
 };
 
 type ResolveOverrides = Partial<typeof import("../src/lib/icqq-resolve.js")>;
@@ -41,11 +42,14 @@ async function loadIcqqInstallWithMocks(options?: {
   );
 
   const execSyncMock = vi.fn(options?.childProcess?.execSyncImpl);
-  const execFileSyncMock = vi.fn(options?.childProcess?.execFileSyncImpl);
+  const spawnSyncMock = vi.fn(
+    options?.childProcess?.spawnSyncImpl ??
+      (() => ({ status: 0, stdout: "", stderr: "" })),
+  );
 
   vi.doMock("node:child_process", () => ({
     execSync: execSyncMock,
-    execFileSync: execFileSyncMock,
+    spawnSync: spawnSyncMock,
   }));
   vi.doMock("../src/lib/icqq-resolve.js", () => ({
     ...actualResolve,
@@ -57,7 +61,7 @@ async function loadIcqqInstallWithMocks(options?: {
   }));
 
   const mod = await import("../src/lib/icqq-install.js");
-  return { mod, execSyncMock, execFileSyncMock };
+  return { mod, execSyncMock, spawnSyncMock };
 }
 
 afterEach(() => {
@@ -82,6 +86,15 @@ describe("icqq-install", () => {
 
   it("summarize auth failure", () => {
     expect(summarizeInstallFailure("auth", "")).toContain("read:packages");
+  });
+
+  it("extractInstallFailureDetail prefers pnpm stdout errors", () => {
+    const detail = [
+      "Command failed: pnpm add -g @icqqjs/icqq",
+      "ERR_PNPM_FETCH_401  GET https://npm.pkg.github.com/@icqqjs%2Ficqq: Unauthorized",
+    ].join("\n");
+    expect(extractInstallFailureDetail(detail)).toContain("ERR_PNPM_FETCH_401");
+    expect(summarizeInstallFailure("other", detail)).toContain("ERR_PNPM_FETCH_401");
   });
 
   it("resolveSetupToken prefers flag over env", () => {
@@ -213,6 +226,7 @@ describe("icqq-install", () => {
     await expect(mod.discoverIcqq((line) => logs.push(line))).resolves.toEqual({
       found: true,
       path: "/global/icqq",
+      listedButUnloadable: false,
     });
     expect(logs.some((line) => line.includes("可以加载（/global/icqq）"))).toBe(true);
   });
@@ -237,6 +251,7 @@ describe("icqq-install", () => {
     await expect(mod.discoverIcqq((line) => logs.push(line))).resolves.toEqual({
       found: false,
       path: "/r1/@icqqjs/icqq",
+      listedButUnloadable: true,
     });
     expect(execSyncMock).toHaveBeenCalledTimes(4);
     expect(logs.some((line) => line.includes("找到包目录（/r1/@icqqjs/icqq）但未能加载"))).toBe(true);
@@ -262,19 +277,20 @@ describe("icqq-install", () => {
     await expect(mod.discoverIcqq((line) => logs.push(line))).resolves.toEqual({
       found: false,
       path: null,
+      listedButUnloadable: false,
     });
     expect(logs.some((line) => line.includes("已扫描 0 个目录"))).toBe(true);
     expect(logs.some((line) => line.includes("结论：需要安装"))).toBe(true);
   });
 
   it("falls back to npm when auth install fails on another package manager", async () => {
-    const { mod, execFileSyncMock } = await loadIcqqInstallWithMocks({
+    const { mod, spawnSyncMock } = await loadIcqqInstallWithMocks({
       childProcess: {
-        execFileSyncImpl: (cmd) => {
+        spawnSyncImpl: (cmd) => {
           if (cmd === "pnpm") {
-            throw { stderr: Buffer.from("npm ERR! code E401") };
+            return { status: 1, stdout: "npm ERR! code E401", stderr: "" };
           }
-          return "ok";
+          return { status: 0, stdout: "", stderr: "" };
         },
       },
       pmVersion: {
@@ -283,19 +299,17 @@ describe("icqq-install", () => {
     });
 
     expect(() => mod.runGithubPackagesGlobalInstall("pnpm", "token-1")).not.toThrow();
-    expect(execFileSyncMock).toHaveBeenCalledTimes(2);
-    expect(execFileSyncMock.mock.calls[0]?.[0]).toBe("pnpm");
-    expect(execFileSyncMock.mock.calls[1]?.[0]).toBe("npm");
+    expect(spawnSyncMock.mock.calls.some((call) => call[0] === "npm")).toBe(true);
   });
 
   it("wraps fallback failure details when npm retry also fails", async () => {
     const { mod } = await loadIcqqInstallWithMocks({
       childProcess: {
-        execFileSyncImpl: (cmd) => {
-          if (cmd === "pnpm") {
-            throw { stderr: Buffer.from("npm ERR! code E401") };
+        spawnSyncImpl: (cmd) => {
+          if (cmd === "pnpm" || cmd === "npm") {
+            return { status: 1, stdout: "npm ERR! code E401", stderr: "" };
           }
-          throw { stderr: Buffer.from("permission denied") };
+          return { status: 0, stdout: "", stderr: "" };
         },
       },
       pmVersion: {
@@ -314,6 +328,35 @@ describe("icqq-install", () => {
       expect((error as IcqqInstallError).detail).toContain("--- npm fallback ---");
       expect((error as IcqqInstallError).detail).toContain("认证策略：");
     }
+  });
+
+  it("reinstall removes global package before install when requested", async () => {
+    const { mod, spawnSyncMock } = await loadIcqqInstallWithMocks({
+      childProcess: {
+        spawnSyncImpl: (cmd, args) => {
+          if (cmd === "pnpm" && args[0] === "remove") {
+            return { status: 0, stdout: "", stderr: "" };
+          }
+          if (cmd === "pnpm" && args[0] === "add") {
+            return { status: 0, stdout: "", stderr: "" };
+          }
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      },
+      pmVersion: {
+        getPackageManagerMajor: vi.fn(() => 11),
+      },
+    });
+
+    mod.runGithubPackagesGlobalInstall("pnpm", "token-3", mod.ICQQ_PACKAGE, {
+      reinstall: true,
+    });
+    expect(spawnSyncMock.mock.calls[0]).toEqual([
+      "pnpm",
+      ["remove", "-g", mod.ICQQ_PACKAGE],
+      expect.any(Object),
+    ]);
+    expect(spawnSyncMock.mock.calls.some((call) => call[1]?.[0] === "add")).toBe(true);
   });
 
   it("formats install environment with compatibility warning", async () => {
