@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.2](https://github.com/icqqjs/cli/compare/v1.8.1...v1.8.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* enhance GitHub token handling and installation commands ([5cd28dc](https://github.com/icqqjs/cli/commit/5cd28dca795958f47a53b5d9e0f3fba40dddf085))
+
 ## [1.8.1](https://github.com/icqqjs/cli/compare/v1.8.0...v1.8.1) (2026-06-22)
 
 
