@@ -84,7 +84,7 @@ export class DaemonContext {
 
 let activeContext: DaemonContext | null = null;
 
-export function initDaemonContext(ctx: DaemonContext): void {
+export function initDaemonContext(ctx: DaemonContext | null): void {
   activeContext = ctx;
 }
 

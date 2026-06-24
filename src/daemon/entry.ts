@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createIcqqClient } from "@/lib/client.js";
 import {
@@ -27,42 +28,37 @@ import { ManagedRuntime } from "./managed-runtime.js";
 import { DaemonServer } from "./server.js";
 import { initIcqqMessageIdBuilders } from "@/lib/icqq-message-id.js";
 
-async function main() {
-  const uin = Number(process.argv[2]);
-  if (!uin || Number.isNaN(uin)) {
-    console.error("Usage: node entry.js <uin>");
-    process.exit(1);
-  }
-
+export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
   let started = false;
 
   try {
     const config = await loadConfig();
     const account = getAccountConfig(config, uin);
     if (!account) {
-      console.error(`[daemon] 未找到账号 ${uin} 的配置`);
-      process.exit(1);
+      throw new Error(`[daemon] 未找到账号 ${uin} 的配置`);
     }
 
     const portConflict = preflightDaemonNetworkPorts(config, uin);
     if (portConflict) {
-      console.error(`[daemon] 网络端口冲突: ${portConflict}`);
-      process.exit(1);
+      throw new Error(`[daemon] 网络端口冲突: ${portConflict}`);
     }
 
     await fs.mkdir(getAccountDir(uin), { recursive: true, mode: 0o700 });
     await fs.writeFile(getPidPath(uin), String(process.pid), { mode: 0o600 });
 
-    // Generate IPC auth token
     const ipcToken = randomBytes(32).toString("hex");
     await fs.writeFile(getTokenPath(uin), ipcToken, { mode: 0o600 });
 
     const client = await createIcqqClient(uin, account);
 
-    // Login with cached token
     await new Promise<void>((resolve, reject) => {
       let settled = false;
-      const settle = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true;
+          fn();
+        }
+      };
 
       client.once("system.online", () => settle(resolve));
 
@@ -70,7 +66,6 @@ async function main() {
         settle(() => reject(new Error(e.message)));
       });
 
-      // If interactive verification is required, daemon cannot handle it
       client.once("system.login.qrcode", () => {
         settle(() => reject(new Error("Token 过期，需要扫码。请重新执行 icqq login")));
       });
@@ -86,7 +81,6 @@ async function main() {
 
     await initIcqqMessageIdBuilders();
 
-    // Start IPC + optional RPC server
     const rpcConfig = resolveRpcConfigForUin(config, uin);
     const ctx = await DaemonContext.fromClient(client, uin);
     initDaemonContext(ctx);
@@ -105,15 +99,15 @@ async function main() {
       server,
       rpcConfig,
       mcpHost,
-    cleanupPaths: [
-      getPidPath(uin),
-      getSocketPath(uin),
-      getTokenPath(uin),
-      getRpcPortPath(uin),
-      getMcpEndpointPath(uin),
-    ],
-    stoppedFlagPath: getDaemonStoppedPath(uin),
-  });
+      cleanupPaths: [
+        getPidPath(uin),
+        getSocketPath(uin),
+        getTokenPath(uin),
+        getRpcPortPath(uin),
+        getMcpEndpointPath(uin),
+      ],
+      stoppedFlagPath: getDaemonStoppedPath(uin),
+    });
     const managedStart = await managedRuntime.start();
     started = true;
     console.log(
@@ -126,7 +120,6 @@ async function main() {
       console.log(`[daemon] MCP 已启用: ${managedStart.mcpUrl}`);
     }
 
-    // Notify parent process
     managedRuntime.notifyReady();
     managedRuntime.attachSignalHandlers();
     managedRuntime.attachLifecycleHandlers(ctx.notifications);
@@ -140,6 +133,8 @@ async function main() {
     client.on("request.group.add", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number; comment?: string }) => {
       ctx.notifications.notifyGroupJoinRequest(e);
     });
+
+    return managedRuntime;
   } catch (e) {
     if (!started) {
       await cleanupDaemonStartupArtifacts(uin);
@@ -148,7 +143,28 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error("[daemon] 致命错误:", e);
-  process.exit(1);
-});
+async function main() {
+  const uin = Number(process.argv[2]);
+  if (!uin || Number.isNaN(uin)) {
+    console.error("Usage: node entry.js <uin>");
+    process.exit(1);
+  }
+
+  try {
+    await runDaemonEntry(uin);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+}
+
+const isEntryMain =
+  typeof process.argv[1] === "string" &&
+  fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isEntryMain) {
+  main().catch((e) => {
+    console.error("[daemon] 致命错误:", e);
+    process.exit(1);
+  });
+}

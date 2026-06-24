@@ -26,3 +26,5 @@ jobs:
       - run: pnpm build
 
       - run: pnpm test:coverage
+
+      - run: pnpm generate:skill-map --check

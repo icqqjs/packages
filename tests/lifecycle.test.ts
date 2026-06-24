@@ -130,4 +130,58 @@ describe("lifecycle", () => {
     await expect(spawnDaemon(12345)).rejects.toThrow("已在运行");
     expect(fork).not.toHaveBeenCalled();
   });
+
+  it("isDaemonRunning returns true when pid and socket are healthy", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue("1234");
+    killSpy.mockImplementation(() => true);
+    mockSocketConnect(true);
+
+    await expect(isDaemonRunning(12345)).resolves.toBe(true);
+    expect(fs.unlink).not.toHaveBeenCalled();
+  });
+
+  it("stopDaemon returns false when no pid file", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+    await expect(stopDaemon(12345)).resolves.toBe(false);
+  });
+
+  it("spawnDaemon resolves when child sends ready", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(fs.stat).mockRejectedValue(new Error("ENOENT"));
+    mockSocketConnect(false);
+
+    const child = {
+      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        if (event === "message") {
+          queueMicrotask(() => handler("ready"));
+        }
+      }),
+      removeAllListeners: vi.fn(),
+      unref: vi.fn(),
+    };
+    vi.mocked(fork).mockReturnValue(child as never);
+
+    await expect(spawnDaemon(12345)).resolves.toBeUndefined();
+    expect(child.unref).toHaveBeenCalled();
+  });
+
+  it("spawnDaemon rejects on child exit with non-zero code", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(fs.stat).mockRejectedValue(new Error("ENOENT"));
+    mockSocketConnect(false);
+
+    const child = {
+      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        if (event === "exit") {
+          queueMicrotask(() => handler(1));
+        }
+      }),
+      removeAllListeners: vi.fn(),
+      unref: vi.fn(),
+    };
+    vi.mocked(fork).mockReturnValue(child as never);
+
+    await expect(spawnDaemon(12345)).rejects.toThrow("守护进程退出");
+  });
 });

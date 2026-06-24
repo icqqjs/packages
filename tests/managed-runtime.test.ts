@@ -381,3 +381,94 @@ describe("ManagedRuntime", () => {
     expect(processRef.exit).toHaveBeenCalledWith(1);
   });
 });
+
+describe("createInteractiveLoginAwaitOutcome", () => {
+  it("resolves on system.online", async () => {
+    const { createInteractiveLoginAwaitOutcome } = await import(
+      "../src/daemon/managed-runtime.js"
+    );
+    const listeners = new Map<string, (event?: unknown) => void>();
+    const client = {
+      once: vi.fn((event: string, listener: (event?: unknown) => void) => {
+        listeners.set(event, listener);
+      }),
+    };
+
+    const awaitOutcome = createInteractiveLoginAwaitOutcome(5000);
+    const outcome = awaitOutcome(client);
+    listeners.get("system.online")?.();
+    await expect(outcome).resolves.toBeUndefined();
+  });
+
+  it("rejects on interactive login events and errors", async () => {
+    const { createInteractiveLoginAwaitOutcome } = await import(
+      "../src/daemon/managed-runtime.js"
+    );
+
+    const cases: Array<[string, unknown, string]> = [
+      ["system.login.error", { message: "bad" }, "bad"],
+      ["system.login.qrcode", undefined, "需要扫码验证"],
+      ["system.login.slider", undefined, "需要滑块验证"],
+      ["system.login.device", undefined, "需要设备验证"],
+      ["system.login.auth", undefined, "需要身份验证"],
+    ];
+
+    for (const [event, payload, message] of cases) {
+      const listeners = new Map<string, (event?: unknown) => void>();
+      const client = {
+        once: vi.fn((name: string, listener: (event?: unknown) => void) => {
+          listeners.set(name, listener);
+        }),
+      };
+      const outcome = createInteractiveLoginAwaitOutcome(5000)(client);
+      listeners.get(event)?.(payload);
+      await expect(outcome).rejects.toThrow(message);
+    }
+  });
+
+  it("rejects on timeout", async () => {
+    vi.useFakeTimers();
+    const { createInteractiveLoginAwaitOutcome } = await import(
+      "../src/daemon/managed-runtime.js"
+    );
+    const client = { once: vi.fn() };
+    const outcome = createInteractiveLoginAwaitOutcome(1000)(client);
+    const assertion = expect(outcome).rejects.toThrow("重连超时");
+    await vi.advanceTimersByTimeAsync(1001);
+    await assertion;
+    vi.useRealTimers();
+  });
+
+  it("attaches signal handlers", () => {
+    const processRef = createProcessStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client: createClientStub(),
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      processRef,
+    });
+
+    runtime.attachSignalHandlers();
+    expect(processRef.on).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+    expect(processRef.on).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+  });
+
+  it("returns configured uin", () => {
+    const runtime = new ManagedRuntime({
+      uin: 999,
+      socketPath: "/tmp/icqq.sock",
+      client: createClientStub(),
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+    });
+    expect(runtime.getUin()).toBe(999);
+  });
+});

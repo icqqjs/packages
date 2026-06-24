@@ -17,6 +17,7 @@
     "clean": "node --eval \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "generate:skill-map": "node --experimental-strip-types scripts/generate-skill-mcp-map.ts",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "keywords": [
