@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.4](https://github.com/icqqjs/cli/compare/v1.8.3...v1.8.4) (2026-06-24)
+
+
+### Bug Fixes
+
+* align launchd shutdown, strengthen reconnect, and polish multi-account CLI ([e200912](https://github.com/icqqjs/cli/commit/e200912714fdd95448f438a123ac60997e0c6137))
+* bump skills submodule for icqq skill docs update ([44c4c0a](https://github.com/icqqjs/cli/commit/44c4c0a0ee45b3f965ca152f7215224301a67794))
+* checkout skills submodule in CI for mcp-cli-map freshness check. ([dad7236](https://github.com/icqqjs/cli/commit/dad7236ac9f51c73b392c94ba237fc8ddbb16285))
+* extract StepFlow and FlowLog shared wizard primitives ([0e2fc51](https://github.com/icqqjs/cli/commit/0e2fc5136532f6d6927e5cdd4c447f7b1c853690))
+* improve GitHub package installation and authentication handling ([ac945bf](https://github.com/icqqjs/cli/commit/ac945bfdca8f8fd66f6d8eaeaf15af69e3e33bc2))
+* improve login network setup, daemon reliability, and CLI UX ([2097df2](https://github.com/icqqjs/cli/commit/2097df2e1bffc190355de1a8b75cd9a64b91d8bc))
+* raise daemon coverage with catalog matrix tests and skill map generator. ([bce4968](https://github.com/icqqjs/cli/commit/bce49688085a190f0f3994572c09c0e847a5cc39))
+
 ## [1.8.3](https://github.com/icqqjs/cli/compare/v1.8.2...v1.8.3) (2026-06-22)
 
 
