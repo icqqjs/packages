@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   notifyReady: vi.fn(),
   attachSignalHandlers: vi.fn(),
   attachLifecycleHandlers: vi.fn(),
+  sendDaemonAlert: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/config.js", () => ({
@@ -73,7 +74,7 @@ vi.mock("../src/daemon/login-waiting-runtime.js", () => ({
 }));
 
 vi.mock("../src/daemon/alert/dispatcher.js", () => ({
-  sendDaemonAlert: vi.fn(async () => {}),
+  sendDaemonAlert: mocks.sendDaemonAlert,
 }));
 
 vi.mock("../src/daemon/managed-runtime.js", () => ({
@@ -125,6 +126,11 @@ describe("runDaemonEntry", () => {
     expect(runtime).toBeTruthy();
     expect(mocks.managedStart).toHaveBeenCalled();
     expect(mocks.notifyReady).toHaveBeenCalled();
+    expect(mocks.sendDaemonAlert).toHaveBeenCalledWith(
+      "daemon_ready",
+      expect.objectContaining({ uin: 123 }),
+      expect.any(Object),
+    );
     expect(mocks.cleanupDaemonStartupArtifacts).not.toHaveBeenCalled();
   });
 
@@ -176,5 +182,15 @@ describe("runDaemonEntry", () => {
     await runDaemonEntry(123);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("MCP 已启用"));
     logSpy.mockRestore();
+  });
+
+  it("rethrows non-interactive login failures and cleans up", async () => {
+    const client = createLoginClient();
+    client.login.mockRejectedValueOnce(new Error("network down"));
+    mocks.createIcqqClient.mockResolvedValue(client);
+
+    await expect(runDaemonEntry(123)).rejects.toThrow("network down");
+    expect(mocks.cleanupDaemonStartupArtifacts).toHaveBeenCalledWith(123);
+    expect(runLoginWaitingRuntime).not.toHaveBeenCalled();
   });
 });

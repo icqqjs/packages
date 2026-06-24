@@ -28,5 +28,29 @@ describe("DaemonEventDispatcher", () => {
       "request.friend.add",
       expect.any(Function),
     );
+
+    const friendHandler = client.on.mock.calls.find(
+      ([event]) => event === "request.friend.add",
+    )?.[1] as (e: unknown) => void;
+    const inviteHandler = client.on.mock.calls.find(
+      ([event]) => event === "request.group.invite",
+    )?.[1] as (e: unknown) => void;
+    const joinHandler = client.on.mock.calls.find(
+      ([event]) => event === "request.group.add",
+    )?.[1] as (e: unknown) => void;
+
+    friendHandler({ nickname: "n", user_id: 1, comment: "hi" });
+    inviteHandler({ nickname: "i", user_id: 2, group_id: 3, group_name: "g" });
+    joinHandler({
+      nickname: "j",
+      user_id: 4,
+      group_id: 5,
+      group_name: "gg",
+      comment: "join",
+    });
+
+    expect(notifications.notifyFriendRequest).toHaveBeenCalled();
+    expect(notifications.notifyGroupInvite).toHaveBeenCalled();
+    expect(notifications.notifyGroupJoinRequest).toHaveBeenCalled();
   });
 });

@@ -71,4 +71,71 @@ describe("executeLoginAction", () => {
     expect(blocked.error).toMatch(/频繁/);
     session.stop();
   });
+
+  it("handles sms submit, send_sms, continue and validation errors", async () => {
+    const client = createMockClient();
+    const session = new LoginSession(client, 123, 60_000, 10);
+    session.start();
+
+    const sms = await executeLoginAction(
+      client,
+      { id: "5", action: LoginActions.LOGIN_SUBMIT, params: { kind: "sms", value: "123456" } },
+      session,
+    );
+    expect(sms.ok).toBe(true);
+
+    const sendSms = await executeLoginAction(
+      client,
+      { id: "6", action: LoginActions.LOGIN_SEND_SMS, params: {} },
+      session,
+    );
+    expect(sendSms.ok).toBe(true);
+
+    const cont = await executeLoginAction(
+      client,
+      { id: "7", action: LoginActions.LOGIN_SUBMIT, params: { kind: "auth" } },
+      session,
+    );
+    expect(cont.ok).toBe(true);
+
+    const missingTicket = await executeLoginAction(
+      client,
+      { id: "8", action: LoginActions.LOGIN_SUBMIT, params: { kind: "slider", value: " " } },
+      session,
+    );
+    expect(missingTicket.ok).toBe(false);
+
+    const unknownKind = await executeLoginAction(
+      client,
+      { id: "9", action: LoginActions.LOGIN_SUBMIT, params: { kind: "nope" } },
+      session,
+    );
+    expect(unknownKind.error).toMatch(/未知 kind/);
+
+    const unknownAction = await executeLoginAction(
+      client,
+      { id: "10", action: "login_other", params: {} },
+      session,
+    );
+    expect(unknownAction.error).toMatch(/未知 login action/);
+
+    session.stop();
+  });
+
+  it("surfaces client errors from send_sms", async () => {
+    const client = createMockClient();
+    (client as { sendSmsCode: ReturnType<typeof vi.fn> }).sendSmsCode.mockRejectedValue(
+      new Error("sms failed"),
+    );
+    const session = new LoginSession(client, 123, 60_000, 10);
+    session.start();
+    const res = await executeLoginAction(
+      client,
+      { id: "11", action: LoginActions.LOGIN_SEND_SMS, params: {} },
+      session,
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe("sms failed");
+    session.stop();
+  });
 });

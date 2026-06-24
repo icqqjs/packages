@@ -63,11 +63,88 @@ describe("config-get", () => {
     expect(getConfigDisplayValue(rich, "mcp.plugins")).toBe("plugin-a, plugin-b");
   });
 
+  it("gets alert provider field values", () => {
+    const withAlerts: IcqqConfig = {
+      accounts: {},
+      alerts: {
+        enabled: true,
+        providers: {
+          bark: { deviceKey: "key", server: "https://bark.example.com" },
+        },
+      },
+    };
+    expect(getConfigDisplayValue(withAlerts, "alerts.providers.bark.deviceKey")).toBe("key");
+    expect(getConfigDisplayValue(withAlerts, "alerts.providers.bark.enabled")).toBe("(未设置)");
+    expect(isConfigGetKey("alerts.providers.wecom.webhookKey")).toBe(true);
+    const entries = listGroupConfigEntries(withAlerts, "alerts");
+    expect(entries.some(([k]) => k === "alerts.providers.bark.deviceKey")).toBe(true);
+  });
+
   it("supports query helpers and hint list", () => {
     expect(isConfigGetQuery("rpc")).toBe(true);
     expect(isConfigGetQuery("rpc.port")).toBe(true);
+    expect(isConfigGetQuery("login")).toBe(true);
     expect(isConfigGetQuery("not-real")).toBe(false);
     expect(availableConfigGetKeysHint()).toContain("mcp.http.port");
+    expect(availableConfigGetKeysHint()).toContain("alerts.providers.bark.deviceKey");
     expect(availableConfigGetKeysHint()).toContain("rpc");
+    expect(availableConfigGetKeysHint()).toContain("login.http.host");
+  });
+
+  it("formats login and alerts keys", () => {
+    const withLogin: IcqqConfig = {
+      accounts: {},
+      alerts: { enabled: true, cooldownMs: 30_000 },
+      login: {
+        http: { host: "0.0.0.0", port: 8080, publicUrl: "https://qq.example.com" },
+        waitingTimeoutMs: 120_000,
+        submitRateLimit: { windowMs: 5_000, maxAttempts: 3 },
+      },
+    };
+    expect(getConfigDisplayValue(withLogin, "alerts.enabled")).toBe("true");
+    expect(getConfigDisplayValue(withLogin, "alerts.cooldownMs")).toBe("30000");
+    expect(getConfigDisplayValue(withLogin, "login.http.host")).toBe("0.0.0.0");
+    expect(getConfigDisplayValue(withLogin, "login.http.port")).toBe("8080");
+    expect(getConfigDisplayValue(withLogin, "login.http.publicUrl")).toBe(
+      "https://qq.example.com",
+    );
+    expect(getConfigDisplayValue(withLogin, "login.waitingTimeoutMs")).toBe("120000");
+    expect(getConfigDisplayValue(withLogin, "login.submitRateLimit.windowMs")).toBe("5000");
+    expect(getConfigDisplayValue(withLogin, "login.submitRateLimit.maxAttempts")).toBe("3");
+
+    const loginGroup = listGroupConfigEntries(withLogin, "login");
+    expect(loginGroup.some(([k]) => k === "login.http.publicUrl")).toBe(true);
+    const alertsGroup = listGroupConfigEntries(withLogin, "alerts");
+    expect(alertsGroup.some(([k]) => k === "alerts.cooldownMs")).toBe(true);
+  });
+
+  it("formats rpc keys and account override notes", () => {
+    const scoped: IcqqConfig = {
+      accounts: {
+        "210723495": {
+          platform: 1,
+          signApiUrl: "",
+          mcp: { http: { port: 61501 } },
+          rpc: { enabled: true, port: 9200 },
+        },
+      },
+      mcp: { enabled: true, http: { host: "127.0.0.1", port: 61500 } },
+      rpc: { enabled: false, host: "127.0.0.1", port: 0 },
+    };
+    expect(getConfigDisplayValue(scoped, "rpc.enabled", 210723495)).toContain("true");
+    expect(getConfigDisplayValue(scoped, "rpc.enabled", 210723495)).toContain("[账号覆盖]");
+    expect(getConfigDisplayValue(scoped, "rpc.port", 210723495)).toBe("9200 [账号覆盖]");
+    expect(getConfigDisplayValue(scoped, "mcp.http.port", 210723495)).toBe("61501 [账号覆盖]");
+    expect(getConfigDisplayValue(scoped, "notifyEnabled")).toBe("false");
+    expect(getConfigDisplayValue(scoped, "currentUin", 210723495)).toBe("(未设置)");
+
+    const all = listAllConfigEntries(scoped, 210723495);
+    expect(all[0]?.[0]).toBe("scope");
+    const rpcGroup = listGroupConfigEntries(scoped, "rpc", 210723495);
+    expect(rpcGroup.find(([k]) => k === "rpc.port")?.[1]).toContain("9200");
+    expect(getConfigDisplayValue(scoped, "mcp.enabled", 210723495)).toBe("true");
+    expect(getConfigDisplayValue(scoped, "rpc.host", 210723495)).toBe("127.0.0.1");
+    expect(getConfigDisplayValue(scoped, "mcp.plugins")).toBe("(无)");
+    expect(getConfigDisplayValue(scoped, "not-in-switch" as never)).toBe("");
   });
 });

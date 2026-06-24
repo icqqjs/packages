@@ -111,4 +111,35 @@ describe("config-set", () => {
     expect(isConfigSetKey("alerts.providers")).toBe(false);
     expect(isConfigSetKey("accounts")).toBe(false);
   });
+
+  it("applies remaining login and alerts keys", () => {
+    const config: IcqqConfig = { accounts: {} };
+    applyConfigSet(config, "alerts.cooldownMs", 45_000);
+    applyConfigSet(config, "login.http.host", "127.0.0.1");
+    applyConfigSet(config, "login.http.port", 8800);
+    applyConfigSet(config, "login.waitingTimeoutMs", 90_000);
+    applyConfigSet(config, "login.submitRateLimit.windowMs", 10_000);
+    applyConfigSet(config, "login.submitRateLimit.maxAttempts", 5);
+
+    expect(config.alerts?.cooldownMs).toBe(45_000);
+    expect(config.login).toEqual({
+      http: { host: "127.0.0.1", port: 8800 },
+      waitingTimeoutMs: 90_000,
+      submitRateLimit: { windowMs: 10_000, maxAttempts: 5 },
+    });
+    expect(parseConfigSetValue("alerts.cooldownMs", "60000")).toBe(60_000);
+    expect(parseConfigSetValue("login.waitingTimeoutMs", "120000")).toBe(120_000);
+  });
+
+  it("rejects alert provider keys with account scope", () => {
+    const config: IcqqConfig = { accounts: {} };
+    expect(() =>
+      applyConfigSet(config, "alerts.providers.bark.deviceKey", "k", 123),
+    ).toThrow("全局配置");
+  });
+
+  it("rejects unknown keys", () => {
+    const config: IcqqConfig = { accounts: {} };
+    expect(() => applyConfigSet(config, "not.a.key", "x")).toThrow("未知配置项");
+  });
 });

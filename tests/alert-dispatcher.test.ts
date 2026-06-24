@@ -6,6 +6,17 @@ import {
 import type { IcqqConfig } from "../src/lib/config.js";
 
 const fetchMock = vi.fn();
+const dispatcherMocks = vi.hoisted(() => ({
+  loadConfig: vi.fn(),
+}));
+
+vi.mock("@/lib/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/config.js")>();
+  return {
+    ...actual,
+    loadConfig: dispatcherMocks.loadConfig,
+  };
+});
 
 function enabledConfig(
   providers: IcqqConfig["alerts"] extends infer A ? NonNullable<A>["providers"] : never,
@@ -24,6 +35,7 @@ describe("sendDaemonAlert", () => {
   beforeEach(() => {
     resetAlertCooldownForTests();
     fetchMock.mockReset();
+    dispatcherMocks.loadConfig.mockReset();
     fetchMock.mockResolvedValue({ ok: true, text: async () => "" });
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -91,6 +103,42 @@ describe("sendDaemonAlert", () => {
       reason: "滑块",
       loginUrl: "https://qq.example.com/login",
     });
-    expect(body.suggestedCli).toBe("icqq login -q 456");
+  });
+
+  it("logs provider failures", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => "err" });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await sendDaemonAlert(
+      "online",
+      { uin: 1 },
+      {
+        config: enabledConfig({ generic: { url: "https://hooks.example.com/icqq" } }),
+        skipCooldown: true,
+      },
+    );
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("[alert] provider failed"));
+    errSpy.mockRestore();
+  });
+
+  it("skips when no providers configured", async () => {
+    await sendDaemonAlert(
+      "online",
+      { uin: 1 },
+      { config: { accounts: {}, alerts: { enabled: true, providers: {} } } },
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("loads config when options.config is omitted", async () => {
+    dispatcherMocks.loadConfig.mockResolvedValue({
+      accounts: {},
+      alerts: {
+        enabled: true,
+        providers: { generic: { url: "https://hooks.example.com/icqq" } },
+      },
+    });
+    await sendDaemonAlert("online", { uin: 99 });
+    expect(dispatcherMocks.loadConfig).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

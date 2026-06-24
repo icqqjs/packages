@@ -1,4 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
+
+const runtimeMocks = vi.hoisted(() => ({
+  runLoginWaitingRuntime: vi.fn(async () => {}),
+  sendDaemonAlert: vi.fn(async () => {}),
+}));
+
+vi.mock("../src/daemon/login-waiting-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/daemon/login-waiting-runtime.js")>();
+  return {
+    ...actual,
+    runLoginWaitingRuntime: runtimeMocks.runLoginWaitingRuntime,
+  };
+});
+
+vi.mock("../src/daemon/alert/dispatcher.js", () => ({
+  sendDaemonAlert: runtimeMocks.sendDaemonAlert,
+}));
+
 import { ManagedRuntime } from "../src/daemon/managed-runtime.js";
 
 function createProcessStub() {
@@ -379,6 +397,76 @@ describe("ManagedRuntime", () => {
 
     expect(notifications.notifyReconnectFailed).toHaveBeenCalledTimes(1);
     expect(processRef.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("enters login_waiting on interactive reconnect failure", async () => {
+    runtimeMocks.runLoginWaitingRuntime.mockClear();
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    const server = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      getRpcPort: vi.fn(() => 0),
+    };
+    const mcpHost = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      getEndpointUrl: vi.fn(() => null),
+    };
+    client.login.mockRejectedValueOnce(new Error("需要滑块验证，请执行 icqq login"));
+
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server,
+      mcpHost,
+      config: {
+        accounts: {},
+        alerts: { enabled: true, providers: { bark: { deviceKey: "k" } } },
+      },
+      ipcToken: "token",
+      sleep: vi.fn(async () => {}),
+      awaitReconnectOutcome: vi.fn(async () => {}),
+      reconnectPolicy: { maxRetries: 1, delaysSeconds: [0] },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    await client.listeners.get("system.offline.network")?.({ message: "lost" });
+
+    expect(server.stop).toHaveBeenCalled();
+    expect(mcpHost.stop).toHaveBeenCalled();
+    expect(runtimeMocks.runLoginWaitingRuntime).toHaveBeenCalled();
+    expect(server.start).toHaveBeenCalled();
+    expect(mcpHost.start).toHaveBeenCalled();
+    expect(notifications.notifyReconnectSuccess).toHaveBeenCalled();
+  });
+
+  it("sends online alert on system.online when alerts enabled", async () => {
+    runtimeMocks.sendDaemonAlert.mockClear();
+    const client = createClientStub();
+    const runtime = new ManagedRuntime({
+      uin: 321,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      config: {
+        accounts: {},
+        alerts: { enabled: true, providers: { bark: { deviceKey: "k" } } },
+      },
+    });
+
+    runtime.attachLifecycleHandlers(createNotificationsStub());
+    client.listeners.get("system.online")?.();
+    expect(runtimeMocks.sendDaemonAlert).toHaveBeenCalledWith(
+      "online",
+      { uin: 321 },
+      expect.objectContaining({ config: expect.any(Object) }),
+    );
   });
 });
 
