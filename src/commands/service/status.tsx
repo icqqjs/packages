@@ -15,7 +15,7 @@ import {
 import { readMcpEndpoint, formatMcpUrl } from "@/lib/paths.js";
 import { resolveMcpConfigForUin, loadConfig } from "@/lib/config.js";
 import { formatServiceError } from "@/lib/cli-errors.js";
-import { getDaemonPid, isDaemonRunning } from "@/daemon/lifecycle.js";
+import { getDaemonPid, isDaemonRunning } from "@/daemon/supervisor.js";
 
 export const description = "查看系统服务状态（默认全部已配置账号；可指定 QQ 号）";
 

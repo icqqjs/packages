@@ -24,7 +24,7 @@ import {
   getAccountDir,
   getTmpDir,
 } from "@/lib/paths.js";
-import { isDaemonRunning, spawnDaemon } from "@/daemon/lifecycle.js";
+import { isDaemonRunning, spawnDaemon } from "@/daemon/supervisor.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 

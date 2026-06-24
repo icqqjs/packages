@@ -17,7 +17,7 @@ import {
   type NetworkSetupChoice,
 } from "@/lib/login-network-setup.js";
 import { getAccountDir, getTmpDir } from "@/lib/paths.js";
-import { isDaemonRunning, spawnDaemon, stopDaemon } from "@/daemon/lifecycle.js";
+import { isDaemonRunning, spawnDaemon, stopDaemon } from "@/daemon/supervisor.js";
 
 export type LoginInteractivePolicy = "reject" | "interactive";
 

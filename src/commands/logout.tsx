@@ -4,7 +4,7 @@ import zod from "zod";
 import { argument, option } from "pastel";
 import { Spinner } from "@/components/Spinner.js";
 import { resolveUin } from "@/lib/config.js";
-import { isDaemonRunning } from "@/daemon/lifecycle.js";
+import { isDaemonRunning } from "@/daemon/supervisor.js";
 import { IpcClient } from "@/lib/ipc-client.js";
 import { Actions } from "@/daemon/protocol.js";
 import { useCliResultContract } from "@/lib/use-cli-result-contract.js";

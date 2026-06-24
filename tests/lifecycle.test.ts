@@ -35,7 +35,7 @@ import {
   janitorStaleDaemonArtifacts,
   spawnDaemon,
   stopDaemon,
-} from "../src/daemon/lifecycle.js";
+} from "../src/daemon/supervisor.js";
 
 const killSpy = vi.spyOn(process, "kill");
 

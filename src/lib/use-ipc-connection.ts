@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { IpcClient } from "./ipc-client.js";
 import { resolveUin } from "./config.js";
-import { isDaemonRunning } from "@/daemon/lifecycle.js";
+import { isDaemonRunning } from "@/daemon/supervisor.js";
 import { formatDaemonNotRunning } from "./cli-errors.js";
 
 /**

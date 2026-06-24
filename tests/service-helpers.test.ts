@@ -18,7 +18,7 @@ import {
   getSystemdServiceName,
   getSystemdServicePath,
   resolveServiceUins,
-} from "../src/commands/service/_helpers.js";
+} from "../src/daemon/supervisor.js";
 
 describe("service _helpers", () => {
   beforeEach(() => {

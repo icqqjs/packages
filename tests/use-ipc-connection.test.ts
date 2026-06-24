@@ -19,7 +19,7 @@ vi.mock("../src/lib/config.js", () => ({
   resolveUin,
 }));
 
-vi.mock("../src/daemon/lifecycle.js", () => ({
+vi.mock("../src/daemon/supervisor.js", () => ({
   isDaemonRunning,
 }));
 

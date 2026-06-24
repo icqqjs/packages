@@ -8,7 +8,7 @@ import {
   saveConfig,
   type IcqqConfig,
 } from "@/lib/config.js";
-import { isDaemonRunning } from "@/daemon/lifecycle.js";
+import { isDaemonRunning } from "@/daemon/supervisor.js";
 
 export const description = "切换当前操作的账号";
 
