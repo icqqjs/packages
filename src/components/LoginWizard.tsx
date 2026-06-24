@@ -9,6 +9,22 @@ import {
   resolveNetworkPortInput,
   type NetworkSetupChoice,
 } from "@/lib/login-network-setup.js";
+import {
+  applyTextInputKey,
+  moveSelectIndex,
+  toggleBinaryIndex,
+} from "@/lib/step-flow-input.js";
+import {
+  StepFlowCompleted,
+  StepFlowFrame,
+  StepFlowMaskedInput,
+  StepFlowPrompt,
+  StepFlowSection,
+  StepFlowSelect,
+  StepFlowTextInput,
+  YES_NO_OPTIONS,
+  type CompletedEntry,
+} from "@/components/StepFlow.js";
 
 export const LOGIN_PLATFORMS = [
   { value: 1, label: "Android" },
@@ -52,6 +68,8 @@ type WizardStep =
   | "rpc_port"
   | "confirm";
 
+const ASK_PW_OPTIONS = ["密码登录", "扫码登录"] as const;
+
 export function LoginWizard({
   onComplete,
   initialQQ,
@@ -67,7 +85,7 @@ export function LoginWizard({
 
   const [qq, setQQ] = useState(initialQQ ? String(initialQQ) : "");
   const [wantPassword, setWantPassword] = useState(needPassword);
-  const [askPwIdx, setAskPwIdx] = useState(needPassword ? 0 : 1); // 0=是, 1=否
+  const [askPwIdx, setAskPwIdx] = useState(needPassword ? 0 : 1);
   const [password, setPassword] = useState("");
   const [platformIdx, setPlatformIdx] = useState(
     () => Math.max(0, LOGIN_PLATFORMS.findIndex((p) => p.value === (savedAccount?.platform ?? 1))),
@@ -99,7 +117,6 @@ export function LoginWizard({
       rpcPort: nextRpcPort,
     });
 
-  // Compute steps dynamically based on password choice
   const steps: WizardStep[] = [];
   if (!initialQQ) steps.push("qq");
   if (!needPassword) steps.push("ask_password");
@@ -116,7 +133,6 @@ export function LoginWizard({
   useInput((input, key) => {
     if (portError) setPortError("");
 
-    // yes/no steps
     if (currentStep === "ask_password" || currentStep === "ask_mcp" || currentStep === "ask_rpc") {
       const idx =
         currentStep === "ask_password"
@@ -132,7 +148,7 @@ export function LoginWizard({
             : setAskRpcIdx;
 
       if (key.upArrow || key.downArrow) {
-        setIdx((prev) => (prev === 0 ? 1 : 0));
+        setIdx((prev) => toggleBinaryIndex(prev));
         return;
       }
       if (key.return) {
@@ -149,16 +165,13 @@ export function LoginWizard({
       return;
     }
 
-    // ask_password step handled above
-
-    // platform step: arrow selection
     if (currentStep === "platform") {
       if (key.upArrow) {
-        setPlatformIdx((prev) => Math.max(0, prev - 1));
+        setPlatformIdx((prev) => moveSelectIndex(prev, "up", LOGIN_PLATFORMS.length - 1));
         return;
       }
       if (key.downArrow) {
-        setPlatformIdx((prev) => Math.min(LOGIN_PLATFORMS.length - 1, prev + 1));
+        setPlatformIdx((prev) => moveSelectIndex(prev, "down", LOGIN_PLATFORMS.length - 1));
         return;
       }
       if (key.return) {
@@ -195,66 +208,65 @@ export function LoginWizard({
       return;
     }
 
-    // Text input steps
-    if (key.return) {
-      if (currentStep === "qq") {
-        setQQ(inputValue);
-      } else if (currentStep === "ver") {
-        setVer(inputValue);
-      } else if (currentStep === "sign_api") {
-        setSignApiUrl(inputValue);
-      } else if (currentStep === "password") {
-        setPassword(inputValue);
-      } else if (currentStep === "mcp_port") {
-        try {
-          const next = resolveNetworkPortInput(inputValue, () =>
-            pickAutoMcpPort(appConfig, scopeUin, rpcPort > 0 ? [rpcPort] : []),
-          );
-          const conflict = validatePorts(next, rpcPort);
-          if (conflict) {
-            setPortError(conflict);
-            setInputValue("");
-            return;
-          }
-          setMcpPort(next);
-        } catch (e) {
-          setPortError(e instanceof Error ? e.message : String(e));
+    const textResult = applyTextInputKey(inputValue, input, key);
+    if (textResult.type === "append") {
+      setInputValue(textResult.value);
+      return;
+    }
+    if (textResult.type === "backspace") {
+      setInputValue(textResult.value);
+      return;
+    }
+    if (textResult.type !== "submit") return;
+
+    if (currentStep === "qq") {
+      setQQ(inputValue);
+    } else if (currentStep === "ver") {
+      setVer(inputValue);
+    } else if (currentStep === "sign_api") {
+      setSignApiUrl(inputValue);
+    } else if (currentStep === "password") {
+      setPassword(inputValue);
+    } else if (currentStep === "mcp_port") {
+      try {
+        const next = resolveNetworkPortInput(inputValue, () =>
+          pickAutoMcpPort(appConfig, scopeUin, rpcPort > 0 ? [rpcPort] : []),
+        );
+        const conflict = validatePorts(next, rpcPort);
+        if (conflict) {
+          setPortError(conflict);
           setInputValue("");
           return;
         }
-      } else if (currentStep === "mcp_token") {
-        setMcpToken(inputValue);
-      } else if (currentStep === "rpc_port") {
-        try {
-          const next = resolveNetworkPortInput(inputValue, () =>
-            pickAutoRpcPort(appConfig, scopeUin, mcpPort > 0 ? [mcpPort] : []),
-          );
-          const conflict = validatePorts(mcpPort, next);
-          if (conflict) {
-            setPortError(conflict);
-            setInputValue("");
-            return;
-          }
-          setRpcPort(next);
-        } catch (e) {
-          setPortError(e instanceof Error ? e.message : String(e));
-          setInputValue("");
-          return;
-        }
+        setMcpPort(next);
+      } catch (e) {
+        setPortError(e instanceof Error ? e.message : String(e));
+        setInputValue("");
+        return;
       }
-      advance();
-      return;
+    } else if (currentStep === "mcp_token") {
+      setMcpToken(inputValue);
+    } else if (currentStep === "rpc_port") {
+      try {
+        const next = resolveNetworkPortInput(inputValue, () =>
+          pickAutoRpcPort(appConfig, scopeUin, mcpPort > 0 ? [mcpPort] : []),
+        );
+        const conflict = validatePorts(mcpPort, next);
+        if (conflict) {
+          setPortError(conflict);
+          setInputValue("");
+          return;
+        }
+        setRpcPort(next);
+      } catch (e) {
+        setPortError(e instanceof Error ? e.message : String(e));
+        setInputValue("");
+        return;
+      }
     }
-    if (key.backspace || key.delete) {
-      setInputValue((v) => v.slice(0, -1));
-      return;
-    }
-    if (input && !key.ctrl && !key.meta) {
-      setInputValue((v) => v + input);
-    }
+    advance();
   });
 
-  // 进入端口步骤时预填已保存默认值；冲突重试时不回显（由 setInputValue("") 保持空白）
   useEffect(() => {
     if (currentStep === "sign_api" && savedAccount?.signApiUrl) {
       setInputValue(savedAccount.signApiUrl);
@@ -274,7 +286,7 @@ export function LoginWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在切换步骤时预填，冲突重试留在同一步不触发
   }, [currentStep]);
 
-  const completedEntries: [string, string][] = [];
+  const completedEntries: CompletedEntry[] = [];
   for (let i = 0; i < stepIdx; i++) {
     const s = steps[i]!;
     if (s === "qq") completedEntries.push(["QQ号", qq || "(扫码登录)"]);
@@ -305,162 +317,116 @@ export function LoginWizard({
     }
   }
 
-  const YES_NO = ["是", "否"] as const;
-  const ASK_PW_OPTIONS = ["密码登录", "扫码登录"] as const;
-
   const networkScopeHint = firstNetworkSetup
     ? "首次配置：开关/Token 写入全局，端口写入当前账号（留空自动选取不冲突端口）"
     : "写入当前账号 MCP/RPC（留空自动选取，填了则校验冲突）";
 
+  const inNetworkSection =
+    currentStep === "ask_mcp" ||
+    currentStep === "ask_rpc" ||
+    currentStep.startsWith("mcp_") ||
+    currentStep.startsWith("rpc_");
+
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold color="cyan">━━ 登录配置 ━━</Text>
-      {savedAccount && (
-        <Text dimColor>已加载已保存配置，直接回车可使用默认值</Text>
-      )}
-      <Box marginTop={1} flexDirection="column">
-        {completedEntries.map(([label, value]) => (
-          <Text key={label}>
-            <Text color="green">✔ </Text>
-            <Text>{label}: </Text>
-            <Text color="white">{value}</Text>
-          </Text>
-        ))}
-      </Box>
+    <StepFlowFrame
+      title="━━ 登录配置 ━━"
+      hint={savedAccount ? "已加载已保存配置，直接回车可使用默认值" : undefined}
+    >
+      <StepFlowCompleted entries={completedEntries} />
 
       {currentStep === "qq" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>QQ号 <Text dimColor>(留空则扫码登录)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{inputValue}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt label="QQ号" hint="(留空则扫码登录)" />
+          <StepFlowTextInput value={inputValue} />
+        </>
       )}
 
       {currentStep === "ask_password" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>登录方式 <Text dimColor>(↑↓选择, 回车确认)</Text></Text>
-          {ASK_PW_OPTIONS.map((label, i) => (
-            <Text key={label}>
-              <Text color={i === askPwIdx ? "cyan" : undefined}>
-                {i === askPwIdx ? "❯ " : "  "}{label}
-              </Text>
-            </Text>
-          ))}
-        </Box>
+        <StepFlowSelect
+          label="登录方式"
+          hint="(↑↓选择, 回车确认)"
+          options={ASK_PW_OPTIONS}
+          selectedIndex={askPwIdx}
+        />
       )}
 
       {currentStep === "password" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>请输入密码:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{"●".repeat(inputValue.length)}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt label="请输入密码:" />
+          <StepFlowMaskedInput value={inputValue} />
+        </>
       )}
 
       {currentStep === "platform" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>选择登录平台 <Text dimColor>(↑↓选择, 回车确认)</Text>:</Text>
-          {LOGIN_PLATFORMS.map((p, i) => (
-            <Text key={p.value}>
-              <Text color={i === platformIdx ? "cyan" : undefined}>
-                {i === platformIdx ? "❯ " : "  "}
-                {p.value}. {p.label}
-              </Text>
-            </Text>
-          ))}
-        </Box>
+        <StepFlowSelect
+          label="选择登录平台"
+          hint="(↑↓选择, 回车确认):"
+          options={LOGIN_PLATFORMS.map((p) => `${p.value}. ${p.label}`)}
+          selectedIndex={platformIdx}
+        />
       )}
 
       {currentStep === "ver" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>协议版本 (ver) <Text dimColor>(如 9.1.70，可留空使用默认)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{inputValue}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt label="协议版本 (ver)" hint="(如 9.1.70，可留空使用默认):" />
+          <StepFlowTextInput value={inputValue} />
+        </>
       )}
 
       {currentStep === "sign_api" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>签名API地址 <Text dimColor>(可留空跳过)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{inputValue}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt label="签名API地址" hint="(可留空跳过):" />
+          <StepFlowTextInput value={inputValue} />
+        </>
       )}
 
-      {(currentStep === "ask_mcp" ||
-        currentStep === "ask_rpc" ||
-        currentStep.startsWith("mcp_") ||
-        currentStep.startsWith("rpc_")) && (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold color="yellow">━━ 网络服务（MCP / RPC）━━</Text>
-          <Text dimColor>{networkScopeHint}</Text>
-        </Box>
+      {inNetworkSection && (
+        <StepFlowSection title="━━ 网络服务（MCP / RPC）━━" hint={networkScopeHint} />
       )}
 
       {currentStep === "ask_mcp" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>启用 MCP HTTP？<Text dimColor>（供 Cursor 等连接 QQ）</Text></Text>
-          <Text dimColor>(↑↓选择, 回车确认)</Text>
-          {YES_NO.map((label, i) => (
-            <Text key={label}>
-              <Text color={i === askMcpIdx ? "cyan" : undefined}>
-                {i === askMcpIdx ? "❯ " : "  "}{label}
-              </Text>
-            </Text>
-          ))}
-        </Box>
+        <StepFlowSelect
+          label="启用 MCP HTTP？"
+          hint="（供 Cursor 等连接 QQ） (↑↓选择, 回车确认)"
+          options={YES_NO_OPTIONS}
+          selectedIndex={askMcpIdx}
+        />
       )}
 
       {currentStep === "mcp_port" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>MCP 监听端口 <Text dimColor>(留空或 0 = 自动选取不冲突端口)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{inputValue}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt
+            label="MCP 监听端口"
+            hint="(留空或 0 = 自动选取不冲突端口):"
+          />
+          <StepFlowTextInput value={inputValue} />
+        </>
       )}
 
       {currentStep === "mcp_token" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>MCP Bearer Token <Text dimColor>(可选，回车跳过)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{"•".repeat(inputValue.length)}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt label="MCP Bearer Token" hint="(可选，回车跳过):" />
+          <StepFlowMaskedInput value={inputValue} char="•" />
+        </>
       )}
 
       {currentStep === "ask_rpc" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>启用 RPC TCP 远程连接？</Text>
-          <Text dimColor>(↑↓选择, 回车确认；仅本机使用选「否」)</Text>
-          {YES_NO.map((label, i) => (
-            <Text key={label}>
-              <Text color={i === askRpcIdx ? "cyan" : undefined}>
-                {i === askRpcIdx ? "❯ " : "  "}{label}
-              </Text>
-            </Text>
-          ))}
-        </Box>
+        <StepFlowSelect
+          label="启用 RPC TCP 远程连接？"
+          hint="(↑↓选择, 回车确认；仅本机使用选「否」)"
+          options={YES_NO_OPTIONS}
+          selectedIndex={askRpcIdx}
+        />
       )}
 
       {currentStep === "rpc_port" && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>RPC 监听端口 <Text dimColor>(留空或 0 = 自动选取不冲突端口)</Text>:</Text>
-          <Box>
-            <Text color="green">❯ </Text>
-            <Text>{inputValue}<Text color="cyan">█</Text></Text>
-          </Box>
-        </Box>
+        <>
+          <StepFlowPrompt
+            label="RPC 监听端口"
+            hint="(留空或 0 = 自动选取不冲突端口):"
+          />
+          <StepFlowTextInput value={inputValue} />
+        </>
       )}
 
       {portError ? <Text color="red">{portError}</Text> : null}
@@ -483,6 +449,6 @@ export function LoginWizard({
           </Text>
         </Box>
       )}
-    </Box>
+    </StepFlowFrame>
   );
 }

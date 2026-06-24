@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Text, Box, useApp, useInput } from "ink";
 import { isIcqqAvailable, getIcqqPath } from "@/lib/icqq-resolve.js";
 import { saveGithubToken } from "@/lib/github-token.js";
@@ -15,6 +15,9 @@ import {
   type SetupTokenSource,
 } from "@/lib/icqq-install.js";
 import { pushTokenHelpLogs } from "@/lib/icqq-setup-hint.js";
+import { applyTextInputKey } from "@/lib/step-flow-input.js";
+import { FlowLog, useFlowLog } from "@/components/FlowLog.js";
+import { StepFlowMaskedInput } from "@/components/StepFlow.js";
 
 export type IcqqPackageFlowMode = "setup" | "update";
 
@@ -25,13 +28,6 @@ type Phase =
   | "installing"
   | "done"
   | "fatal";
-
-type LogTone = "dim" | "ok" | "warn" | "err";
-
-type LogEntry = {
-  text: string;
-  tone: LogTone;
-};
 
 export type IcqqGithubPackageFlowProps = {
   title: string;
@@ -57,29 +53,6 @@ function tokenSourceLabel(source: SetupTokenSource): string {
   }
 }
 
-function FlowLog({ entries }: { entries: LogEntry[] }) {
-  if (entries.length === 0) return null;
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      {entries.map((entry, i) => {
-        const color =
-          entry.tone === "ok"
-            ? "green"
-            : entry.tone === "warn"
-              ? "yellow"
-              : entry.tone === "err"
-                ? "red"
-                : undefined;
-        return (
-          <Text key={`${i}-${entry.text}`} color={color} dimColor={entry.tone === "dim"}>
-            {entry.text}
-          </Text>
-        );
-      })}
-    </Box>
-  );
-}
-
 export function IcqqGithubPackageFlow({
   title,
   mode,
@@ -95,14 +68,7 @@ export function IcqqGithubPackageFlow({
   const [tokenInput, setTokenInput] = useState("");
   const [reinstall, setReinstall] = useState(false);
   const [fatalMessage, setFatalMessage] = useState("");
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const logsRef = useRef<LogEntry[]>([]);
-
-  const pushLog = useCallback((text: string, tone: LogTone = "dim") => {
-    const entry = { text, tone };
-    logsRef.current = [...logsRef.current, entry];
-    setLogs(logsRef.current);
-  }, []);
+  const { logs, pushLog } = useFlowLog();
 
   const finish = useCallback(
     (code?: number) => {
@@ -237,32 +203,34 @@ export function IcqqGithubPackageFlow({
     (input, key) => {
       if (phase !== "need-token") return;
 
-      if (key.return) {
-        const t = tokenInput.trim();
-        if (!t) {
-          pushLog("   → Token 为空，请重新输入", "warn");
-          return;
-        }
-        void (async () => {
-          await saveGithubToken(t);
-          pushLog("   → 已接收 Token（交互输入，已保存到 ~/.icqq/github.token）", "ok");
-          setActiveToken(t);
-          setPhase("installing");
-        })();
-        return;
-      }
-      if (key.backspace || key.delete) {
-        setTokenInput((v) => v.slice(0, -1));
-        return;
-      }
       if (key.ctrl && input === "c") {
         pushLog("已取消", "warn");
         finish(1);
         return;
       }
-      if (!key.ctrl && !key.meta && input) {
-        setTokenInput((v) => v + input);
+
+      const textResult = applyTextInputKey(tokenInput, input, key);
+      if (textResult.type === "append") {
+        setTokenInput(textResult.value);
+        return;
       }
+      if (textResult.type === "backspace") {
+        setTokenInput(textResult.value);
+        return;
+      }
+      if (textResult.type !== "submit") return;
+
+      const t = tokenInput.trim();
+      if (!t) {
+        pushLog("   → Token 为空，请重新输入", "warn");
+        return;
+      }
+      void (async () => {
+        await saveGithubToken(t);
+        pushLog("   → 已接收 Token（交互输入，已保存到 ~/.icqq/github.token）", "ok");
+        setActiveToken(t);
+        setPhase("installing");
+      })();
     },
     { isActive: phase === "need-token" },
   );
@@ -279,13 +247,7 @@ export function IcqqGithubPackageFlow({
 
       {phase === "need-token" && (
         <Box flexDirection="column" marginTop={1}>
-          <Box>
-            <Text color="cyan">❯ </Text>
-            <Text>
-              {"•".repeat(tokenInput.length)}
-              <Text color="cyan">█</Text>
-            </Text>
-          </Box>
+          <StepFlowMaskedInput value={tokenInput} char="•" />
         </Box>
       )}
 
