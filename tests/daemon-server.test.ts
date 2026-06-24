@@ -10,7 +10,7 @@ import { Actions } from "../src/daemon/protocol.js";
 
 const handleRequest = vi.fn();
 
-vi.mock("../src/daemon/handlers.js", () => ({
+vi.mock("../src/daemon/request-router.js", () => ({
   handleRequest: (...args: unknown[]) => handleRequest(...args),
 }));
 
@@ -54,6 +54,8 @@ function readLine(socket: net.Socket): Promise<unknown> {
 function createContext(): DaemonContext {
   const client = {
     em: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
   };
   return {
     uin: UIN,

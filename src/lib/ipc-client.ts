@@ -22,6 +22,7 @@ import type {
   IpcEvent,
   IpcMessage,
 } from "@/daemon/protocol.js";
+import { appendAndSplitLines, formatJsonLine, parseJsonLine } from "./json-line-framing.js";
 import { wrapSubscribeEventHandler } from "@/lib/ipc-event-filter.js";
 
 export class IpcClient {
@@ -115,18 +116,17 @@ export class IpcClient {
       }, 10000);
 
       const onData = (chunk: Buffer) => {
-        challengeBuffer += chunk.toString();
-        const nlIdx = challengeBuffer.indexOf("\n");
-        if (nlIdx === -1) return;
+        const split = appendAndSplitLines(challengeBuffer, chunk.toString());
+        challengeBuffer = split.remainder;
+        if (split.lines.length === 0) return;
 
         clearTimeout(timeout);
         client.socket.removeListener("data", onData);
-        challengeRemainder = challengeBuffer.slice(nlIdx + 1);
+        challengeRemainder = challengeBuffer;
+        challengeBuffer = "";
 
         try {
-          const msg = JSON.parse(challengeBuffer.slice(0, nlIdx)) as {
-            challenge?: string;
-          };
+          const msg = parseJsonLine<{ challenge?: string }>(split.lines[0]!);
           if (!msg.challenge) {
             reject(new Error("RPC 服务端未发送挑战"));
             return;
@@ -183,14 +183,12 @@ export class IpcClient {
   }
 
   private onData(data: string) {
-    this.buffer += data;
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop()!;
+    const split = appendAndSplitLines(this.buffer, data);
+    this.buffer = split.remainder;
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    for (const line of split.lines) {
       try {
-        const msg = JSON.parse(line) as IpcMessage;
+        const msg = parseJsonLine<IpcMessage>(line);
         if ("event" in msg) {
           for (const handler of this.eventHandlers.values()) {
             handler(msg as IpcEvent);
@@ -233,7 +231,7 @@ export class IpcClient {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
-      this.socket.write(JSON.stringify(req) + "\n", (err) => {
+      this.socket.write(formatJsonLine(req), (err) => {
         if (err) {
           clearTimeout(timer);
           this.pending.delete(id);

@@ -3,12 +3,14 @@ import fs from "node:fs/promises";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IpcRequest, IpcMessage } from "./protocol.js";
 import { Actions } from "./protocol.js";
-import { handleRequest } from "./handlers.js";
-import { icqqEventJsonReplacer } from "@/lib/serialize-icqq-event.js";
+import { handleRequest } from "./request-router.js";
+import { formatIpcMessageLine, appendAndSplitLines, parseJsonLine } from "@/lib/json-line-framing.js";
 import type { RpcConfig } from "@/lib/config.js";
 import { getSocketPath, getRpcPortPath } from "@/lib/paths.js";
 import type { DaemonContext } from "./daemon-context.js";
 import { EventBridge } from "./event-bridge.js";
+import { DaemonEventDispatcher } from "./event-dispatcher.js";
+import { EventPipeline } from "./event-pipeline.js";
 
 /** Per-IP auth failure tracker for RPC rate limiting */
 type AuthFailure = { count: number; firstAttempt: number };
@@ -28,13 +30,13 @@ export class DaemonServer {
   private rpcPort = 0;
   private ctx: DaemonContext;
   private ipcToken: string;
-  private eventBridge: EventBridge;
-  private sockets = new Map<string, net.Socket>();
+  private eventDispatcher: DaemonEventDispatcher;
+  private eventPipeline: EventPipeline;
   private authedSockets = new Set<string>();
   private pendingChallenges = new Map<string, string>();
   private authFailures = new Map<string, AuthFailure>();
   private nextSocketId = 0;
-  private unsubscribeEvents: (() => void) | null = null;
+  private sockets = new Map<string, net.Socket>();
 
   constructor(
     ctx: DaemonContext,
@@ -44,20 +46,11 @@ export class DaemonServer {
     this.ctx = ctx;
     this.ipcToken = ipcToken;
     this.rpcConfig = rpcConfig ?? null;
-    this.eventBridge = new EventBridge();
-    this.eventBridge.attach(ctx.client);
-    this.unsubscribeEvents = this.eventBridge.subscribe((payload) => {
-      void this.ctx.pushWebhook({
-        event: payload.event,
-        data: payload.data,
-      });
-      this.ctx.notifications.notifyMessage(
-        this.ctx.client,
-        payload.event,
-        payload.data,
-      );
-      this.fanOutEvent(payload.event, payload.data);
-    });
+    this.eventDispatcher = new DaemonEventDispatcher();
+    this.eventPipeline = new EventPipeline(ctx, (event, data) =>
+      this.fanOutEvent(event, data),
+    );
+    this.eventPipeline.attachToDispatcher(this.eventDispatcher, ctx.client, ctx);
     this.ipcServer = net.createServer((socket) =>
       this.handleConnection(socket, "ipc"),
     );
@@ -81,7 +74,7 @@ export class DaemonServer {
 
   private sendToSocket(socket: net.Socket, msg: IpcMessage) {
     if (!socket.destroyed) {
-      socket.write(JSON.stringify(msg, icqqEventJsonReplacer) + "\n");
+      socket.write(formatIpcMessageLine(msg));
     }
   }
 
@@ -131,17 +124,15 @@ export class DaemonServer {
     }
 
     socket.on("data", (chunk) => {
-      buffer += chunk.toString();
+      const split = appendAndSplitLines(buffer, chunk.toString());
+      buffer = split.remainder;
       if (!this.authedSockets.has(socketId) && buffer.length > 4096) {
         socket.destroy();
         return;
       }
-      const lines = buffer.split("\n");
-      buffer = lines.pop()!;
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      for (const line of split.lines) {
         try {
-          const req = JSON.parse(line) as IpcRequest;
+          const req = parseJsonLine<IpcRequest>(line);
 
           if (!this.authedSockets.has(socketId)) {
             if (mode === "ipc") {
@@ -228,7 +219,7 @@ export class DaemonServer {
 
   private async processRequest(socket: net.Socket, req: IpcRequest) {
     try {
-      const response = await handleRequest(this.ctx.client, req);
+      const response = await handleRequest(this.ctx.client, req, this.ctx);
       this.sendToSocket(socket, response);
     } catch (err) {
       this.sendToSocket(socket, {
@@ -308,8 +299,8 @@ export class DaemonServer {
   }
 
   async stop(): Promise<void> {
-    this.unsubscribeEvents?.();
-    this.unsubscribeEvents = null;
+    this.eventPipeline.detach();
+    this.eventDispatcher.detach();
 
     for (const socket of this.sockets.values()) {
       socket.destroy();
