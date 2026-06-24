@@ -20,16 +20,22 @@ import {
   getDaemonStoppedPath,
 } from "@/lib/paths.js";
 import { McpHost } from "@/mcp/server.js";
-import {
-  DaemonContext,
-} from "./daemon-context.js";
+import { DaemonContext } from "./daemon-context.js";
 import { cleanupDaemonStartupArtifacts } from "./entry-cleanup.js";
 import { ManagedRuntime } from "./managed-runtime.js";
 import { DaemonServer } from "./server.js";
 import { initIcqqMessageIdBuilders } from "@/lib/icqq-message-id.js";
+import {
+  isInteractiveLoginRequired,
+  runLoginWaitingRuntime,
+} from "./login-waiting-runtime.js";
+import { sendDaemonAlert } from "./alert/dispatcher.js";
+import { createLifecycleNotifications } from "./lifecycle-notifications.js";
 
 export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
   let started = false;
+  let ipcToken = "";
+  let client: Awaited<ReturnType<typeof createIcqqClient>> | null = null;
 
   try {
     const config = await loadConfig();
@@ -46,14 +52,34 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
     await fs.mkdir(getAccountDir(uin), { recursive: true, mode: 0o700 });
     await fs.writeFile(getPidPath(uin), String(process.pid), { mode: 0o600 });
 
-    const ipcToken = randomBytes(32).toString("hex");
+    ipcToken = randomBytes(32).toString("hex");
     await fs.writeFile(getTokenPath(uin), ipcToken, { mode: 0o600 });
 
-    const client = await createIcqqClient(uin, account);
+    client = await createIcqqClient(uin, account);
 
-    await awaitLoginOutcome(client, "reject", () => client.login(uin), {
-      errorVariant: "daemon",
-    });
+    try {
+      await awaitLoginOutcome(client, "reject", () => client!.login(uin), {
+        errorVariant: "daemon",
+      });
+    } catch (loginError) {
+      if (!isInteractiveLoginRequired(loginError)) {
+        throw loginError;
+      }
+      let readySent = false;
+      await runLoginWaitingRuntime({
+        client,
+        uin,
+        ipcToken,
+        config,
+        reason: loginError instanceof Error ? loginError.message : String(loginError),
+        onReady: () => {
+          if (!readySent && process.send) {
+            process.send("ready");
+            readySent = true;
+          }
+        },
+      });
+    }
 
     await initIcqqMessageIdBuilders();
 
@@ -74,6 +100,8 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
       server,
       rpcConfig,
       mcpHost,
+      config,
+      ipcToken,
       cleanupPaths: [
         getPidPath(uin),
         getSocketPath(uin),
@@ -96,8 +124,11 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
     }
 
     managedRuntime.notifyReady();
+    await sendDaemonAlert("daemon_ready", { uin, reason: "守护进程已上线" }, { config });
     managedRuntime.attachSignalHandlers();
-    managedRuntime.attachLifecycleHandlers(ctx.notifications);
+    managedRuntime.attachLifecycleHandlers(
+      createLifecycleNotifications(uin, config, ctx.notifications),
+    );
 
     return managedRuntime;
   } catch (e) {

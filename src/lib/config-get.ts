@@ -9,10 +9,19 @@ import {
   resolveRpcConfigForUin,
 } from "./config.js";
 import {
+  resolveAlertsConfig,
+  resolveLoginConfig,
+} from "./alert-config.js";
+import {
   CONFIG_SET_KEYS,
   isAccountScopedConfigKey,
   type ConfigSetKey,
 } from "./config-set.js";
+import {
+  getAlertProviderFieldValue,
+  listAlertProviderConfigKeys,
+  parseAlertProviderConfigKey,
+} from "./alert-provider-config.js";
 
 /** 与 config set 相同的点分键 */
 export const CONFIG_GET_DOT_KEYS = CONFIG_SET_KEYS.filter(
@@ -22,7 +31,7 @@ export const CONFIG_GET_DOT_KEYS = CONFIG_SET_KEYS.filter(
 const TOP_LEVEL_GET_KEYS = ["currentUin", "webhookUrl", "notifyEnabled", "accounts"] as const;
 
 /** 可单独查询的分组前缀 */
-export const CONFIG_GET_GROUPS = ["mcp", "rpc"] as const;
+export const CONFIG_GET_GROUPS = ["mcp", "rpc", "alerts", "login"] as const;
 
 export type ConfigGetGroup = (typeof CONFIG_GET_GROUPS)[number];
 
@@ -55,6 +64,15 @@ function formatPort(port: number): string {
 
 function formatToken(token: string | undefined): string {
   return token ?? unset();
+}
+
+function formatAlertProviderField(config: IcqqConfig, key: string): string {
+  const parsed = parseAlertProviderConfigKey(key);
+  if (!parsed) return unset();
+  const value = getAlertProviderFieldValue(config, parsed.type, parsed.field);
+  if (value === undefined || value === "") return unset();
+  if (typeof value === "boolean") return formatBool(value);
+  return String(value);
 }
 
 function accountOverrideNote(
@@ -105,6 +123,8 @@ export function listAllConfigEntries(
   uin?: number,
 ): [string, string][] {
   const { mcp, rpc } = resolveScopedMcpRpc(config, uin);
+  const alerts = resolveAlertsConfig(config);
+  const login = resolveLoginConfig(config);
   const suffix = (key: ConfigSetKey) =>
     uin !== undefined ? accountOverrideNote(config, uin, key) : "";
 
@@ -126,6 +146,17 @@ export function listAllConfigEntries(
     ["rpc.enabled", formatBool(rpc.enabled) + suffix("rpc.enabled")],
     ["rpc.host", rpc.host + suffix("rpc.host")],
     ["rpc.port", formatPort(rpc.port) + suffix("rpc.port")],
+    ["alerts.enabled", formatBool(alerts.enabled)],
+    ["alerts.cooldownMs", String(alerts.cooldownMs)],
+    ...listAlertProviderConfigKeys().map(
+      (k: string) => [k, formatAlertProviderField(config, k)] as [string, string],
+    ),
+    ["login.http.host", login.http.host],
+    ["login.http.port", formatPort(login.http.port)],
+    ["login.http.publicUrl", login.http.publicUrl ?? unset()],
+    ["login.waitingTimeoutMs", String(login.waitingTimeoutMs)],
+    ["login.submitRateLimit.windowMs", String(login.submitRateLimit.windowMs)],
+    ["login.submitRateLimit.maxAttempts", String(login.submitRateLimit.maxAttempts)],
   ];
 
   if (uin !== undefined) {
@@ -151,9 +182,16 @@ export function getConfigDisplayValue(
   uin?: number,
 ): string {
   const { mcp, rpc } = resolveScopedMcpRpc(config, uin);
+  const alerts = resolveAlertsConfig(config);
+  const login = resolveLoginConfig(config);
   const suffix = uin !== undefined && isAccountScopedConfigKey(key as ConfigSetKey)
     ? accountOverrideNote(config, uin, key as ConfigSetKey)
     : "";
+
+  const providerKey = parseAlertProviderConfigKey(key);
+  if (providerKey) {
+    return formatAlertProviderField(config, key);
+  }
 
   switch (key) {
     case "currentUin":
@@ -182,13 +220,30 @@ export function getConfigDisplayValue(
       return rpc.host + suffix;
     case "rpc.port":
       return formatPort(rpc.port) + suffix;
+    case "alerts.enabled":
+      return formatBool(alerts.enabled);
+    case "alerts.cooldownMs":
+      return String(alerts.cooldownMs);
+    case "login.http.host":
+      return login.http.host;
+    case "login.http.port":
+      return formatPort(login.http.port);
+    case "login.http.publicUrl":
+      return login.http.publicUrl ?? unset();
+    case "login.waitingTimeoutMs":
+      return String(login.waitingTimeoutMs);
+    case "login.submitRateLimit.windowMs":
+      return String(login.submitRateLimit.windowMs);
+    case "login.submitRateLimit.maxAttempts":
+      return String(login.submitRateLimit.maxAttempts);
     default:
       return "";
   }
 }
 
 export function isConfigGetKey(key: string): key is ConfigGetKey {
-  return (CONFIG_GET_KEYS as readonly string[]).includes(key);
+  if ((CONFIG_GET_KEYS as readonly string[]).includes(key)) return true;
+  return parseAlertProviderConfigKey(key) !== null;
 }
 
 export function isConfigGetGroup(key: string): key is ConfigGetGroup {
@@ -200,5 +255,7 @@ export function isConfigGetQuery(key: string): key is ConfigGetQuery {
 }
 
 export function availableConfigGetKeysHint(): string {
-  return [...CONFIG_GET_KEYS, ...CONFIG_GET_GROUPS].join(", ");
+  return [...CONFIG_GET_KEYS, ...listAlertProviderConfigKeys(), ...CONFIG_GET_GROUPS].join(
+    ", ",
+  );
 }

@@ -6,6 +6,7 @@
  *
  * @module config
  */
+import type { AlertsConfig, LoginConfig } from "@/daemon/alert/types.js";
 import fs from "node:fs/promises";
 import { getConfigPath, getIcqqHome } from "./paths.js";
 
@@ -63,6 +64,10 @@ export interface IcqqConfig {
   mcp?: Omit<Partial<McpConfig>, "http"> & { http?: Partial<McpHttpConfig> };
   /** 各账号配置，key 为 QQ 号字符串 */
   accounts: Record<string, AccountConfig>;
+  /** 无人值守告警（headless） */
+  alerts?: AlertsConfig;
+  /** 远程 Login Web / waiting */
+  login?: LoginConfig;
 }
 
 /** 读取配置文件，不存在时返回默认值。自动执行 defaultUin → currentUin 向后兼容迁移。 */

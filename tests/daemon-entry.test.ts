@@ -65,6 +65,17 @@ vi.mock("@/mcp/host.js", () => ({
   },
 }));
 
+vi.mock("../src/daemon/login-waiting-runtime.js", () => ({
+  isInteractiveLoginRequired: (error: unknown) =>
+    error instanceof Error &&
+    (error.message.includes("Token 过期") || error.message.includes("滑块验证")),
+  runLoginWaitingRuntime: vi.fn(async () => {}),
+}));
+
+vi.mock("../src/daemon/alert/dispatcher.js", () => ({
+  sendDaemonAlert: vi.fn(async () => {}),
+}));
+
 vi.mock("../src/daemon/managed-runtime.js", () => ({
   ManagedRuntime: class MockManagedRuntime {
     start = mocks.managedStart;
@@ -75,6 +86,7 @@ vi.mock("../src/daemon/managed-runtime.js", () => ({
 }));
 
 import { runDaemonEntry } from "../src/daemon/entry.js";
+import { runLoginWaitingRuntime } from "../src/daemon/login-waiting-runtime.js";
 
 function createLoginClient() {
   const listeners = new Map<string, (event?: unknown) => void>();
@@ -128,25 +140,28 @@ describe("runDaemonEntry", () => {
     expect(mocks.cleanupDaemonStartupArtifacts).toHaveBeenCalledWith(123);
   });
 
-  it("rejects qrcode login during daemon bootstrap", async () => {
+  it("enters login_waiting on qrcode during daemon bootstrap", async () => {
     const client = createLoginClient();
     client.login.mockImplementation(async () => {
       client.once.mock.calls.find(([event]) => event === "system.login.qrcode")?.[1]?.();
     });
     mocks.createIcqqClient.mockResolvedValue(client);
 
-    await expect(runDaemonEntry(123)).rejects.toThrow("Token 过期");
-    expect(mocks.cleanupDaemonStartupArtifacts).toHaveBeenCalledWith(123);
+    await runDaemonEntry(123);
+    expect(runLoginWaitingRuntime).toHaveBeenCalled();
+    expect(mocks.managedStart).toHaveBeenCalled();
+    expect(mocks.cleanupDaemonStartupArtifacts).not.toHaveBeenCalled();
   });
 
-  it("rejects slider login during daemon bootstrap", async () => {
+  it("enters login_waiting on slider during daemon bootstrap", async () => {
     const client = createLoginClient();
     client.login.mockImplementation(async () => {
       client.once.mock.calls.find(([event]) => event === "system.login.slider")?.[1]?.();
     });
     mocks.createIcqqClient.mockResolvedValue(client);
 
-    await expect(runDaemonEntry(123)).rejects.toThrow("滑块验证");
+    await runDaemonEntry(123);
+    expect(runLoginWaitingRuntime).toHaveBeenCalled();
   });
 
   it("starts MCP host when enabled", async () => {

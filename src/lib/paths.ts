@@ -56,9 +56,14 @@ export function getRpcPortPath(uin: number): string {
   return path.join(getAccountDir(uin), "daemon.rpc");
 }
 
+export function getLoginEndpointPath(uin: number): string {
+  return path.join(getAccountDir(uin), "daemon.login");
+}
+
 export function getMcpEndpointPath(uin: number): string {
   return path.join(getAccountDir(uin), "daemon.mcp");
 }
+
 
 /** 优雅退出标记；存在时 launchd 不再自动重启 */
 export function getDaemonStoppedPath(uin: number): string {

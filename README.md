@@ -112,6 +112,8 @@ icqq completion fish | source
 | 守护进程未运行 | `icqq login -r` 或 `icqq service start` |
 | MCP 端口冲突 | `icqq config set mcp.http.port 0` 后 `icqq service restart` |
 | macOS 服务 logout 后仍重启 | 正常退出会写入 `daemon.stopped`；需再次 `service start` 清除标记 |
+| 服务器收不到告警 | `icqq config get alerts` 确认 `enabled` 与 `providers`；密钥勿提交 git；改配置后 `service restart` |
+| 告警无登录链接 | 配置 `login.http.publicUrl` 为反代 HTTPS 根 URL |
 
 ## 命令一览
 
@@ -188,7 +190,183 @@ icqq service restart                      # 或重新 login
 | `icqq config get <key>` | 查看指定配置项 |
 | `icqq config set <key> <value>` | 设置配置项 |
 
-常用配置键：`currentUin`、`webhookUrl`、`notifyEnabled`、`mcp.enabled`、`mcp.http.port`、`mcp.http.token`、`rpc.enabled` 等。
+常用配置键：`currentUin`、`webhookUrl`、`notifyEnabled`、`mcp.enabled`、`alerts.enabled`、`alerts.providers.bark.deviceKey`、`login.http.publicUrl` 等。告警详情见下节。
+
+### 无人值守告警（`alerts`）
+
+适用于 **headless Linux**、无桌面通知的服务器部署。守护进程在 token 失效、掉线、需滑块/扫码时向配置的渠道**广播**推送；进程进入 `login_waiting` 而非退出，可通过内嵌 Web UI 或门控 IPC 续传登录。
+
+#### 与桌面通知的区别
+
+| 配置 | 作用 |
+|------|------|
+| `notifyEnabled` | 本机**桌面通知**（macOS/Windows 弹窗），适合有图形界面的机器 |
+| `alerts.enabled` + `alerts.providers.<type>.*` | **远程推送**（Bark、企微、钉钉等），适合服务器无人值守 |
+
+两者可同时开启：消息类仍走桌面 notify；生命周期类（掉线、需登录、上线）在 `alerts.enabled` 时走推送渠道。
+
+#### 快速启用
+
+```bash
+# 1. 启用并配置渠道（每项一条 config set）
+icqq config set alerts.enabled true
+icqq config set alerts.providers.bark.deviceKey YOUR_DEVICE_KEY
+icqq config set alerts.providers.bark.server https://bark.l2cl.link
+
+# 2. （推荐）配置外网可点的 Login Web 根 URL，告警里才会有可点击链接
+icqq config set login.http.publicUrl https://qq.example.com
+
+# 3. 查看当前告警配置（含各渠道字段）
+icqq config get alerts
+
+# 4. 重启守护进程使配置生效
+icqq service restart
+```
+
+渠道按 **type 分组**，CLI 键名为 `alerts.providers.<type>.<field>`。可配置多个 type，每次告警会对所有已启用且字段齐全的渠道各发一遍（广播）。临时禁用某渠道：`icqq config set alerts.providers.bark.enabled false`。
+
+#### 告警事件
+
+| 事件 | 触发时机 | 默认冷却 |
+|------|----------|----------|
+| `daemon_ready` | IPC socket 可连 / 守护进程上线 | 15 分钟（per-kind） |
+| `login_waiting` | 需扫码、滑块等人机验证 | 15 分钟 |
+| `offline_network` | 网络掉线 | 15 分钟 |
+| `offline_kickoff` | 被踢下线 | 15 分钟 |
+| `online` | 每次上线（含日常重连） | 15 分钟 |
+
+冷却时间可通过 `icqq config set alerts.cooldownMs 900000` 调整（毫秒，默认 `900000` = 15 分钟）。同一账号、同一事件类型在冷却窗口内不重复推送。
+
+告警正文**不含** `daemon.token`；`login_waiting` 会附带 `login.http.publicUrl/login`（未配置 `publicUrl` 时仅提示 CLI 命令）。
+
+#### 通知渠道配置示例
+
+键名格式：`alerts.providers.<type>.<field>`。`config.json` 中对应为对象 `alerts.providers.{type}.{field}`。
+
+| type | CLI 键示例 |
+|------|------------|
+| `bark` | `alerts.providers.bark.deviceKey`、`alerts.providers.bark.server` |
+| `wecom` | `alerts.providers.wecom.webhookKey` |
+| `dingtalk` | `alerts.providers.dingtalk.webhook`、`alerts.providers.dingtalk.secret` |
+| `feishu` | `alerts.providers.feishu.webhook`、`alerts.providers.feishu.secret` |
+| `telegram` | `alerts.providers.telegram.botToken`、`alerts.providers.telegram.chatId` |
+| `pushdeer` | `alerts.providers.pushdeer.pushkey`、`alerts.providers.pushdeer.server` |
+| `serverchan` | `alerts.providers.serverchan.sendkey` |
+| `generic` | `alerts.providers.generic.url` |
+
+各 type 均支持 `alerts.providers.<type>.enabled`（`true`/`false`）。
+
+**Bark（iOS）** — 默认服务器 `https://api.day.app`；自建/第三方需设 `server`：
+
+```bash
+icqq config set alerts.providers.bark.deviceKey YOUR_DEVICE_KEY
+icqq config set alerts.providers.bark.server https://bark.l2cl.link
+```
+
+**企业微信机器人** — webhook URL 中 `key=` 后的值：
+
+```bash
+icqq config set alerts.providers.wecom.webhookKey YOUR_WEBHOOK_KEY
+```
+
+**钉钉机器人**
+
+```bash
+icqq config set alerts.providers.dingtalk.webhook 'https://oapi.dingtalk.com/robot/send?access_token=TOKEN'
+icqq config set alerts.providers.dingtalk.secret SECxxx   # 加签时可选
+```
+
+**飞书机器人**
+
+```bash
+icqq config set alerts.providers.feishu.webhook 'https://open.feishu.cn/open-apis/bot/v2/hook/xxx'
+icqq config set alerts.providers.feishu.secret xxx       # 签名时可选
+```
+
+**Telegram Bot**
+
+```bash
+icqq config set alerts.providers.telegram.botToken '123456:ABC'
+icqq config set alerts.providers.telegram.chatId '-1001234567890'
+```
+
+**PushDeer**
+
+```bash
+icqq config set alerts.providers.pushdeer.pushkey PUSHKEY
+icqq config set alerts.providers.pushdeer.server https://api2.pushdeer.com   # 可选
+```
+
+**Server酱 Turbo**
+
+```bash
+icqq config set alerts.providers.serverchan.sendkey SCTxxxxxx
+```
+
+**自建 Webhook（generic）** — POST JSON，含 `type`、`uin`、`ts`、`reason`、`loginUrl` 等：
+
+```bash
+icqq config set alerts.providers.generic.url https://hooks.example.com/icqq
+```
+
+**多渠道同时推送** — 分别 set 各 type 即可：
+
+```bash
+icqq config set alerts.providers.bark.deviceKey KEY
+icqq config set alerts.providers.bark.server https://bark.l2cl.link
+icqq config set alerts.providers.wecom.webhookKey WECOM_KEY
+```
+
+#### 环境变量（headless / systemd 友好）
+
+写入 service 环境或 `~/.icqq` 启动脚本后，守护进程启动时会自动合并进 `alerts.providers.<type>`（与 config.json 同 type 时 env 覆盖对应字段）：
+
+| 环境变量 | 说明 |
+|----------|------|
+| `ICQQ_ALERTS_ENABLED` | `true` 或 `1` 启用告警 |
+| `ICQQ_ALERT_BARK_KEY` | Bark `deviceKey` |
+| `ICQQ_ALERT_BARK_SERVER` | Bark 服务器根 URL（如 `https://bark.l2cl.link`） |
+| `ICQQ_ALERT_WECOM_WEBHOOK_KEY` | 企业微信机器人 key |
+| `ICQQ_ALERT_DINGTALK_WEBHOOK` | 钉钉 webhook 完整 URL |
+| `ICQQ_ALERT_DINGTALK_SECRET` | 钉钉加签 secret（可选） |
+| `ICQQ_ALERT_FEISHU_WEBHOOK` | 飞书 webhook URL |
+| `ICQQ_ALERT_FEISHU_SECRET` | 飞书签名 secret（可选） |
+| `ICQQ_ALERT_TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `ICQQ_ALERT_TELEGRAM_CHAT_ID` | Telegram Chat ID |
+| `ICQQ_ALERT_PUSHDEER_KEY` | PushDeer pushkey |
+| `ICQQ_ALERT_PUSHDEER_SERVER` | PushDeer server（可选） |
+| `ICQQ_ALERT_SERVERCHAN_KEY` | Server酱 sendkey |
+| `ICQQ_ALERT_WEBHOOK_URL` | generic webhook URL |
+
+示例（systemd `Environment=` 或 shell）：
+
+```bash
+export ICQQ_ALERTS_ENABLED=true
+export ICQQ_ALERT_BARK_KEY=YOUR_DEVICE_KEY
+export ICQQ_ALERT_BARK_SERVER=https://bark.l2cl.link
+```
+
+#### 远程登录续传（`login_waiting`）
+
+需人机验证时守护进程**不退出**，并启动本地 Login Web（默认 `127.0.0.1` 随机端口）：
+
+| 配置键 | 说明 | 默认 |
+|--------|------|------|
+| `login.http.host` | Login Web 监听地址 | `127.0.0.1` |
+| `login.http.port` | 监听端口 | `0`（自动分配） |
+| `login.http.publicUrl` | 反代/公网 HTTPS 根 URL，告警中可点击 | 未设置 |
+| `login.waitingTimeoutMs` | waiting 超时后 exit | `86400000`（24h） |
+
+外网访问：配置 Nginx/Caddy 反代到本机 Login Web，或使用 SSH 隧道：
+
+```bash
+ssh -L 8787:127.0.0.1:<login-port> user@server
+# 浏览器打开 http://127.0.0.1:8787/login/auth ，粘贴 ~/.icqq/<uin>/daemon.token
+```
+
+门控 IPC（仅 `login_waiting` 态，需 socket 认证）：`login_get_state`、`login_submit`、`login_send_sms`。MCP **不**暴露这些 action。
+
+设计说明见 [docs/adr/0005-headless-alerts-login-waiting.md](docs/adr/0005-headless-alerts-login-waiting.md)。
 
 ### 消息
 

@@ -49,6 +49,8 @@ export type ManagedRuntimeOptions = {
     delaysSeconds: number[];
   };
   reconnectExhaustAction?: ReconnectExhaustAction;
+  config?: IcqqConfig;
+  ipcToken?: string;
 };
 
 export type ManagedRuntimeLifecycleNotifications = {
@@ -64,7 +66,15 @@ export type ManagedRuntimeStartInfo = {
   mcpUrl: string | null;
 };
 
+import type { IcqqConfig } from "@/lib/config.js";
 import { createInteractiveLoginAwaitOutcome } from "@/lib/account-bootstrap.js";
+import {
+  isInteractiveLoginRequired,
+  runLoginWaitingRuntime,
+} from "@/daemon/login-waiting-runtime.js";
+import { resolveAlertsConfig } from "@/lib/alert-config.js";
+import { sendDaemonAlert } from "@/daemon/alert/dispatcher.js";
+import type { Client } from "@icqqjs/icqq";
 
 export class ManagedRuntime {
   private readonly uin: number;
@@ -85,6 +95,8 @@ export class ManagedRuntime {
     delaysSeconds: number[];
   };
   private readonly reconnectExhaustAction: ReconnectExhaustAction;
+  private readonly config: IcqqConfig | null;
+  private readonly ipcToken: string | null;
   private shutdownPromise: Promise<void> | null = null;
   private reconnectPromise: Promise<void> | null = null;
   private reconnectAborted = false;
@@ -109,6 +121,8 @@ export class ManagedRuntime {
       delaysSeconds: [5, 10, 30, 60, 120],
     };
     this.reconnectExhaustAction = options.reconnectExhaustAction ?? "stay-offline";
+    this.config = options.config ?? null;
+    this.ipcToken = options.ipcToken ?? null;
   }
 
   async start(): Promise<ManagedRuntimeStartInfo> {
@@ -146,6 +160,15 @@ export class ManagedRuntime {
   attachLifecycleHandlers(
     notifications: ManagedRuntimeLifecycleNotifications,
   ): void {
+    const alertsOn =
+      this.config != null && resolveAlertsConfig(this.config).enabled;
+
+    this.client.on("system.online", () => {
+      if (alertsOn && this.config) {
+        void sendDaemonAlert("online", { uin: this.uin }, { config: this.config });
+      }
+    });
+
     this.client.on("system.offline.network", async (event: { message: string }) => {
       this.logger.log("[daemon] 网络掉线:", event.message);
       notifications.notifyOfflineNetwork(event.message);
@@ -182,6 +205,37 @@ export class ManagedRuntime {
           notifications.notifyReconnectSuccess();
           return;
         } catch (error) {
+          if (
+            this.config &&
+            this.ipcToken &&
+            isInteractiveLoginRequired(error)
+          ) {
+            this.logger.log("[daemon] 重连需要交互式登录，进入 login_waiting…");
+            await this.server.stop();
+            if (this.mcpHost) {
+              await this.mcpHost.stop();
+            }
+            try {
+              await runLoginWaitingRuntime({
+                client: this.client as Client,
+                uin: this.uin,
+                ipcToken: this.ipcToken,
+                config: this.config,
+                reason: error instanceof Error ? error.message : String(error),
+              });
+              await this.server.start();
+              if (this.mcpHost) {
+                await this.mcpHost.start();
+              }
+              this.logger.log("[daemon] 交互式登录完成，重连成功");
+              notifications.notifyReconnectSuccess();
+              return;
+            } catch (waitingError) {
+              this.logger.log(
+                `[daemon] login_waiting 失败: ${waitingError instanceof Error ? waitingError.message : waitingError}`,
+              );
+            }
+          }
           this.logger.log(
             `[daemon] 第 ${i + 1} 次重连失败: ${error instanceof Error ? error.message : error}`,
           );

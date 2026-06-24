@@ -1,13 +1,28 @@
 import type { Client } from "@icqqjs/icqq";
 import type { DaemonContext } from "./daemon-context.js";
 import { getActionCatalogEntry } from "./action-catalog.js";
+import { isLoginAction } from "./login-actions.js";
+import { executeLoginAction } from "./executors/login.js";
+import type { LoginSession } from "./login-session.js";
 import type { IpcRequest, IpcResponse } from "./protocol.js";
 
 export async function handleRequest(
   client: Client,
   req: IpcRequest,
-  ctx: DaemonContext,
+  ctx: DaemonContext | null,
+  loginSession?: LoginSession | null,
 ): Promise<IpcResponse> {
+  if (isLoginAction(req.action)) {
+    if (!loginSession?.isActive()) {
+      return { id: req.id, ok: false, error: "daemon_login_required" };
+    }
+    return executeLoginAction(client, req, loginSession);
+  }
+
+  if (!ctx) {
+    return { id: req.id, ok: false, error: "daemon_login_required" };
+  }
+
   const catalogEntry = getActionCatalogEntry(req.action);
   if (catalogEntry) {
     try {

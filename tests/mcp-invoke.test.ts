@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Actions } from "../src/daemon/protocol.js";
+import { LoginActions } from "../src/daemon/login-actions.js";
 import {
   MCP_BLOCKED_ACTIONS,
 } from "../src/mcp/policy.js";
@@ -21,6 +22,12 @@ describe("validateMcpAction", () => {
   it("rejects logout", () => {
     expect(validateMcpAction(Actions.LOGOUT)).toMatch(/禁止/);
     expect(MCP_BLOCKED_ACTIONS.has(Actions.LOGOUT)).toBe(true);
+  });
+
+  it("rejects login IPC actions", () => {
+    expect(validateMcpAction(LoginActions.LOGIN_GET_STATE)).toMatch(/禁止/);
+    expect(validateMcpAction(LoginActions.LOGIN_SUBMIT)).toMatch(/禁止/);
+    expect(MCP_BLOCKED_ACTIONS.has(LoginActions.LOGIN_SEND_SMS)).toBe(true);
   });
 
   it("rejects unknown action", () => {

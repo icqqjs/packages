@@ -35,6 +35,23 @@ describe("config-set", () => {
     expect(config.mcp?.http?.port).toBe(3920);
   });
 
+  it("applies alerts provider fields via dotted keys", () => {
+    const config: IcqqConfig = { accounts: {} };
+    applyConfigSet(config, "alerts.enabled", true);
+    applyConfigSet(config, "login.http.publicUrl", "https://qq.example.com");
+    applyConfigSet(config, "alerts.providers.bark.deviceKey", "bark-key");
+    applyConfigSet(config, "alerts.providers.bark.server", "https://bark.l2cl.link");
+    applyConfigSet(config, "alerts.providers.wecom.webhookKey", "wecom-key");
+    expect(config.alerts?.enabled).toBe(true);
+    expect(config.login?.http?.publicUrl).toBe("https://qq.example.com");
+    expect(config.alerts?.providers).toEqual({
+      bark: { deviceKey: "bark-key", server: "https://bark.l2cl.link" },
+      wecom: { webhookKey: "wecom-key" },
+    });
+    expect(isConfigSetKey("alerts.providers.bark.deviceKey")).toBe(true);
+    expect(parseConfigSetValue("alerts.providers.bark.enabled", "false")).toBe(false);
+  });
+
   it("applies account-scoped mcp/rpc when uin is provided", () => {
     const config: IcqqConfig = {
       mcp: { enabled: true, http: { host: "127.0.0.1", port: 61500 } },
@@ -90,6 +107,8 @@ describe("config-set", () => {
 
   it("recognizes only supported keys", () => {
     expect(isConfigSetKey("rpc.port")).toBe(true);
+    expect(isConfigSetKey("alerts.providers.telegram.chatId")).toBe(true);
+    expect(isConfigSetKey("alerts.providers")).toBe(false);
     expect(isConfigSetKey("accounts")).toBe(false);
   });
 });

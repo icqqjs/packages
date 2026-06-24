@@ -6,7 +6,6 @@ import { Spinner } from "@/components/Spinner.js";
 import { loadConfig, saveConfig, resolveConfigScopeUin } from "@/lib/config.js";
 import {
   applyConfigSet,
-  CONFIG_SET_KEYS,
   isConfigSetKey,
   parseConfigSetValue,
 } from "@/lib/config-set.js";
@@ -18,7 +17,7 @@ export const args = zod.tuple([
     argument({
       name: "key",
       description:
-        "配置项 (currentUin, webhookUrl, mcp.enabled, mcp.http.port, …)；配合 -u 可设账号级 mcp/rpc",
+        "配置项 (currentUin, alerts.providers.bark.deviceKey, mcp.enabled, …)；配合 -u 可设账号级 mcp/rpc",
     }),
   ),
   zod.string().describe(
@@ -45,7 +44,7 @@ export default function ConfigSet({ args: [key, value] }: Props) {
       try {
         if (!isConfigSetKey(key)) {
           throw new Error(
-            `未知配置项: ${key}\n可用: ${CONFIG_SET_KEYS.join(", ")}`,
+            `未知配置项: ${key}\n可用键示例: alerts.providers.bark.deviceKey, alerts.enabled, mcp.enabled\n完整列表见: icqq config get`,
           );
         }
 

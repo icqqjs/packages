@@ -1,4 +1,5 @@
 import { Actions } from "@/daemon/protocol.js";
+import { LOGIN_ACTION_VALUES } from "@/daemon/login-actions.js";
 import {
   ACTION_CATALOG,
   getActionCatalogEntry,
@@ -20,6 +21,7 @@ export const MCP_BLOCKED_ACTIONS = new Set<string>([
   Actions.RECALL_MSG,
   Actions.DELETE_STAMP,
   Actions.GFS_DELETE,
+  ...LOGIN_ACTION_VALUES,
 ]);
 
 const PILOT_ACTION_SET = new Set(

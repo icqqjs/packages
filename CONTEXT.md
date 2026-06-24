@@ -28,3 +28,15 @@ Module at `src/daemon/event-dispatcher.ts` that registers icqq client events (me
 ## McpPolicy / McpServer
 
 MCP layer entry at `src/mcp/server.ts` with blocked-action policy in `src/mcp/policy.ts`. HTTP host is `McpHost`; invocation goes through `invokeMcpAction(client, action, params, ctx)`.
+
+## AlertDispatcher
+
+Module at `src/daemon/alert/` broadcasting lifecycle alerts (`daemon_ready`, `login_waiting`, `offline_*`, `online`) to configured providers when `alerts.enabled`. Cooldown is per-kind in-process.
+
+## LoginSession / LoginWaitingRuntime
+
+`LoginSession` (`src/daemon/login-session.ts`) holds interactive login state during `login_waiting`. `LoginWaitingRuntime` orchestrates restricted `LoginIpcServer`, `LoginWebHost`, and alerts until `system.online`, then hands off to full `DaemonServer`.
+
+## LoginIpcGate
+
+`request-router.ts` routes `login_*` actions only when `LoginSession.isActive()`; other IPC requests during waiting return `daemon_login_required`.

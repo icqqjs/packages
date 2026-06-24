@@ -168,18 +168,19 @@ describe("legacy handlers bulk matrix", () => {
 
   it("routes handleRequest through catalog and formats errors", async () => {
     const client = createGroupClient().client;
+    const ctx = createStubDaemonContext(client);
     const ok = await handleRequest(client, {
       id: "1",
       action: Actions.PING,
       params: {},
-    });
+    }, ctx);
     expect(ok).toEqual({ id: "1", ok: true, data: expect.objectContaining({ pong: true }) });
 
     const bad = await handleRequest(client, {
       id: "2",
       action: Actions.GROUP_MUTE,
       params: { group_id: 0, user_id: 2 },
-    });
+    }, ctx);
     expect(bad.ok).toBe(false);
     expect(bad.error).toContain("group_id");
 
@@ -187,7 +188,7 @@ describe("legacy handlers bulk matrix", () => {
       id: "3",
       action: "not_real",
       params: {},
-    });
+    }, ctx);
     expect(unknown).toEqual({ id: "3", ok: false, error: "未知操作: not_real" });
   });
 
