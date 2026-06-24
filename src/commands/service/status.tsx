@@ -37,6 +37,7 @@ type AccountStatus = ServiceState & {
   isCurrent: boolean;
   pidMismatch: boolean;
   serviceDaemonDrift: boolean;
+  daemonOrphan: boolean;
 };
 
 function StatusLine({ s }: { s: AccountStatus }) {
@@ -72,6 +73,9 @@ function StatusLine({ s }: { s: AccountStatus }) {
       {s.mcpUrl ? <Text color="cyan"> MCP:{s.mcpUrl}</Text> : null}
       {s.pidMismatch ? <Text color="red"> ⚠服务PID与守护进程不一致</Text> : null}
       {s.serviceDaemonDrift ? <Text color="red"> ⚠服务在跑但守护进程未就绪</Text> : null}
+      {s.daemonOrphan ? (
+        <Text color="yellow"> ⚠守护在运行但未由系统服务托管（请 service restart）</Text>
+      ) : null}
     </Text>
   );
 }
@@ -118,6 +122,15 @@ function StatusDetail({ s }: { s: AccountStatus }) {
       {s.serviceDaemonDrift ? (
         <Text color="red">系统服务显示运行中，但守护进程 socket 不可达</Text>
       ) : null}
+      {s.daemonOrphan ? (
+        <Text color="yellow">
+          守护进程在运行，但 launchd/systemd 未托管（常见于登录后 fork 的守护进程）。请执行
+          {" "}
+          <Text bold>icqq service restart</Text>
+          {" "}
+          统一到系统服务。
+        </Text>
+      ) : null}
     </Box>
   );
 }
@@ -163,6 +176,7 @@ export default function ServiceStatus({ args: [argUin] }: Props) {
               daemonPid !== null &&
               svc.pid !== daemonPid,
             serviceDaemonDrift: svc.running && !daemonRunning,
+            daemonOrphan: svc.installed && !svc.running && daemonRunning,
           });
         }
 

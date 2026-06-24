@@ -428,6 +428,15 @@ export async function startService(
   log: (s: string) => void,
 ): Promise<void> {
   await clearDaemonStoppedFlag(uin);
+  const svcState =
+    process.platform === "darwin"
+      ? await _queryLaunchd(uin)
+      : await _querySystemd(uin);
+  if ((await isDaemonRunning(uin)) && !svcState.running) {
+    throw new Error(
+      `账号 ${uin} 守护进程已在运行，但未由系统服务托管。请执行 \`icqq service restart -u ${uin}\` 统一到 launchd`,
+    );
+  }
   if (process.platform === "darwin") {
     await _startLaunchd(uin, log);
   } else {
@@ -496,6 +505,25 @@ async function _uninstallLaunchd(uin: number, log: (s: string) => void): Promise
   await fs.unlink(plistPath);
 }
 
+function _isLaunchdJobLoaded(uin: number): boolean {
+  try {
+    execSync(`launchctl list "${getLaunchdLabel(uin)}" 2>/dev/null`, {
+      encoding: "utf-8",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function _launchdKickstartTarget(uin: number): string {
+  const uid = process.getuid?.();
+  if (uid === undefined) {
+    throw new Error("无法获取当前用户 UID");
+  }
+  return `gui/${uid}/${getLaunchdLabel(uin)}`;
+}
+
 async function _startLaunchd(uin: number, log: (s: string) => void): Promise<void> {
   const plistPath = getLaunchdPlistPath(uin);
   try {
@@ -503,8 +531,18 @@ async function _startLaunchd(uin: number, log: (s: string) => void): Promise<voi
   } catch {
     throw new Error(`服务未安装，请先执行 icqq service install`);
   }
+
+  const state = await _queryLaunchd(uin);
+  if (state.running) return;
+
   log("启动 launchd 服务…");
-  execSync(`launchctl load "${plistPath}"`, { stdio: "pipe" });
+  if (_isLaunchdJobLoaded(uin)) {
+    execSync(`launchctl kickstart "${_launchdKickstartTarget(uin)}"`, {
+      stdio: "pipe",
+    });
+  } else {
+    execSync(`launchctl load "${plistPath}"`, { stdio: "pipe" });
+  }
 }
 
 async function _stopLaunchd(uin: number, log: (s: string) => void): Promise<void> {
@@ -531,12 +569,7 @@ async function _restartLaunchd(uin: number, log: (s: string) => void): Promise<v
   }
   const state = await _queryLaunchd(uin);
   if (state.running) {
-    const label = getLaunchdLabel(uin);
-    const uid = process.getuid?.();
-    if (uid === undefined) {
-      throw new Error("无法获取当前用户 UID");
-    }
-    const target = `gui/${uid}/${label}`;
+    const target = _launchdKickstartTarget(uin);
     log(`重启 launchd 服务 (${target})…`);
     try {
       execSync(`launchctl kickstart -k "${target}"`, { stdio: "pipe" });
