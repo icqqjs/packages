@@ -81,21 +81,3 @@ export class DaemonContext {
     }
   }
 }
-
-let activeContext: DaemonContext | null = null;
-
-export function initDaemonContext(ctx: DaemonContext | null): void {
-  activeContext = ctx;
-}
-
-export function getDaemonContext(): DaemonContext {
-  if (!activeContext) {
-    throw new Error("DaemonContext 未初始化");
-  }
-  return activeContext;
-}
-
-/** 进程内调用（MCP / handlers）；守护进程外返回 null */
-export function tryGetDaemonContext(): DaemonContext | null {
-  return activeContext;
-}

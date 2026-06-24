@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createIcqqClient } from "@/lib/client.js";
+import { awaitLoginOutcome } from "@/lib/account-bootstrap.js";
 import {
   loadConfig,
   getAccountConfig,
@@ -18,10 +19,9 @@ import {
   getMcpEndpointPath,
   getDaemonStoppedPath,
 } from "@/lib/paths.js";
-import { McpHost } from "@/mcp/host.js";
+import { McpHost } from "@/mcp/server.js";
 import {
   DaemonContext,
-  initDaemonContext,
 } from "./daemon-context.js";
 import { cleanupDaemonStartupArtifacts } from "./entry-cleanup.js";
 import { ManagedRuntime } from "./managed-runtime.js";
@@ -51,45 +51,20 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
 
     const client = await createIcqqClient(uin, account);
 
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const settle = (fn: () => void) => {
-        if (!settled) {
-          settled = true;
-          fn();
-        }
-      };
-
-      client.once("system.online", () => settle(resolve));
-
-      client.once("system.login.error", (e: { message: string }) => {
-        settle(() => reject(new Error(e.message)));
-      });
-
-      client.once("system.login.qrcode", () => {
-        settle(() => reject(new Error("Token 过期，需要扫码。请重新执行 icqq login")));
-      });
-      client.once("system.login.slider", () => {
-        settle(() => reject(new Error("需要滑块验证。请重新执行 icqq login")));
-      });
-      client.once("system.login.device", () => {
-        settle(() => reject(new Error("需要设备验证。请重新执行 icqq login")));
-      });
-
-      client.login(uin).catch((e: unknown) => settle(() => reject(e)));
+    await awaitLoginOutcome(client, "reject", () => client.login(uin), {
+      errorVariant: "daemon",
     });
 
     await initIcqqMessageIdBuilders();
 
     const rpcConfig = resolveRpcConfigForUin(config, uin);
     const ctx = await DaemonContext.fromClient(client, uin);
-    initDaemonContext(ctx);
     const server = new DaemonServer(ctx, ipcToken, rpcConfig);
 
     const mcpConfig = resolveMcpConfigForUin(config, uin);
     let mcpHost: McpHost | null = null;
     if (mcpConfig.enabled) {
-      mcpHost = new McpHost(client, uin, mcpConfig);
+      mcpHost = new McpHost(client, uin, mcpConfig, ctx);
     }
 
     const managedRuntime = new ManagedRuntime({
@@ -123,16 +98,6 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
     managedRuntime.notifyReady();
     managedRuntime.attachSignalHandlers();
     managedRuntime.attachLifecycleHandlers(ctx.notifications);
-
-    client.on("request.friend.add", (e: { nickname: string; user_id: number; comment?: string }) => {
-      ctx.notifications.notifyFriendRequest(e);
-    });
-    client.on("request.group.invite", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number }) => {
-      ctx.notifications.notifyGroupInvite(e);
-    });
-    client.on("request.group.add", (e: { nickname?: string; user_id: number; group_name?: string; group_id: number; comment?: string }) => {
-      ctx.notifications.notifyGroupJoinRequest(e);
-    });
 
     return managedRuntime;
   } catch (e) {

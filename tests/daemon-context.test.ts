@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DaemonContext,
-  getDaemonContext,
-  initDaemonContext,
-  tryGetDaemonContext,
 } from "../src/daemon/daemon-context.js";
 import { loadConfig, saveConfig } from "@/lib/config.js";
 
@@ -64,18 +61,6 @@ describe("DaemonContext", () => {
     vi.unstubAllGlobals();
   });
 
-  it("exposes active context helpers", () => {
-    const ctx = new DaemonContext({} as never, 7);
-    initDaemonContext(ctx);
-    expect(getDaemonContext()).toBe(ctx);
-    expect(tryGetDaemonContext()).toBe(ctx);
-  });
-
-  it("throws when daemon context is not initialized", () => {
-    initDaemonContext(null as never);
-    expect(() => getDaemonContext()).toThrow("DaemonContext 未初始化");
-    expect(tryGetDaemonContext()).toBeNull();
-  });
 
   it("falls back when loadConfig fails in fromClient", async () => {
     vi.mocked(loadConfig).mockRejectedValueOnce(new Error("ENOENT"));
