@@ -31,16 +31,32 @@ function parseActionStrings(protocolSource: string): Map<string, string> {
   return map;
 }
 
-function parseActionHints(source: string): Map<string, ActionHint> {
+function parseCatalogEntries(source: string): Map<string, ActionHint> {
   const hints = new Map<string, ActionHint>();
-  const blockRe =
-    /\[Actions\.([A-Z0-9_]+)\]:\s*\{([^}]*)\}/gs;
-  for (const match of source.matchAll(blockRe)) {
+  const re =
+    /action:\s*Actions\.([A-Z0-9_]+),\s*description:\s*"([^"]*)"(?:,\s*paramsHint:\s*"([^"]*)")?/g;
+  for (const match of source.matchAll(re)) {
     const enumKey = match[1]!;
-    const body = match[2]!;
-    const desc = body.match(/description:\s*"([^"]*)"/)?.[1] ?? enumKey;
-    const params = body.match(/paramsHint:\s*"([^"]*)"/)?.[1];
-    hints.set(enumKey, { description: desc, paramsHint: params });
+    hints.set(enumKey, {
+      description: match[2]!,
+      paramsHint: match[3],
+    });
+  }
+  return hints;
+}
+
+async function loadActionHints(): Promise<Map<string, ActionHint>> {
+  const files = [
+    "src/daemon/executors/basic.ts",
+    "src/daemon/executors/messaging.ts",
+    "src/daemon/executors/legacy.ts",
+  ];
+  const hints = new Map<string, ActionHint>();
+  for (const file of files) {
+    const source = await readText(file);
+    for (const [key, value] of parseCatalogEntries(source)) {
+      hints.set(key, value);
+    }
   }
   return hints;
 }
@@ -114,7 +130,7 @@ function renderMarkdown(
     "",
     "# MCP action ↔ CLI 对照",
     "",
-    "由 `pnpm generate:skill-map` 从 `action-hints.ts` 与 `src/commands/**` 生成。",
+    "由 `pnpm generate:skill-map` 从 `action-catalog` 与 `src/commands/**` 生成。",
     "MCP 调用前先 `icqq_list_actions`；下表 CLI 列可能有多个命令映射同一 action。",
     "",
     "| MCP action | 说明 | params 提示 | CLI | MCP |",
@@ -132,15 +148,14 @@ function renderMarkdown(
 }
 
 export async function generateSkillMcpMap(): Promise<string> {
-  const [protocolSource, hintsSource, metaSource] = await Promise.all([
+  const [protocolSource, policySource, hints] = await Promise.all([
     readText("src/daemon/protocol.ts"),
-    readText("src/daemon/action-hints.ts"),
-    readText("src/daemon/action-meta.ts"),
+    readText("src/mcp/policy.ts"),
+    loadActionHints(),
   ]);
 
   const actionEnumToValue = parseActionStrings(protocolSource);
-  const hints = parseActionHints(hintsSource);
-  const blockedEnums = parseMcpBlocked(metaSource);
+  const blockedEnums = parseMcpBlocked(policySource);
   const blockedActions = new Set(
     [...blockedEnums]
       .map((key) => actionEnumToValue.get(key))

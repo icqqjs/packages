@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createStubDaemonContext, createBaseClient } from "./helpers/daemon-test-context.js";
 vi.mock("../src/lib/icqq-resolve.js", () => ({
   resolveIcqq: async () => ({
     parseGroupMessageId(messageId: string) {
@@ -43,13 +44,13 @@ describe("legacy action catalog entries", () => {
       getActionCatalogEntry(Actions.GROUP_SET_REACTION)?.execute(client, {
         message_id: messageId,
         id: "128077",
-      }),
+      }, createStubDaemonContext(client)),
     ).resolves.toEqual({ seq: 321, id: "128077", op: "set" });
     await expect(
       getActionCatalogEntry(Actions.GROUP_DEL_REACTION)?.execute(client, {
         message_id: messageId,
         id: "128077",
-      }),
+      }, createStubDaemonContext(client)),
     ).resolves.toEqual({ seq: 321, id: "128077", op: "del" });
 
     expect(pickGroup).toHaveBeenCalledTimes(2);
@@ -76,27 +77,27 @@ describe("legacy action catalog entries", () => {
     } as unknown as import("@icqqjs/icqq").Client;
 
     await expect(
-      getActionCatalogEntry(Actions.LIST_GROUPS)?.execute(client, {}),
+      getActionCatalogEntry(Actions.LIST_GROUPS)?.execute(client, {}, createStubDaemonContext(client)),
     ).resolves.toEqual([
       { group_id: 9, group_name: "群", member_count: 5, max_member_count: 200, owner_id: 1 },
     ]);
     await expect(
-      getActionCatalogEntry(Actions.LIST_BLACKLIST)?.execute(client, {}),
+      getActionCatalogEntry(Actions.LIST_BLACKLIST)?.execute(client, {}, createStubDaemonContext(client)),
     ).resolves.toEqual([{ user_id: 66 }]);
     await expect(
-      getActionCatalogEntry(Actions.LIST_FRIEND_CLASSES)?.execute(client, {}),
+      getActionCatalogEntry(Actions.LIST_FRIEND_CLASSES)?.execute(client, {}, createStubDaemonContext(client)),
     ).resolves.toEqual([{ id: 1, name: "默认分组" }]);
     await expect(
-      getActionCatalogEntry(Actions.GET_FRIEND_INFO)?.execute(client, { user_id: 7 }),
+      getActionCatalogEntry(Actions.GET_FRIEND_INFO)?.execute(client, { user_id: 7 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ user_id: 7, nickname: "好友", remark: "备注" });
     await expect(
-      getActionCatalogEntry(Actions.GET_GROUP_INFO)?.execute(client, { group_id: 9 }),
+      getActionCatalogEntry(Actions.GET_GROUP_INFO)?.execute(client, { group_id: 9 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ group_id: 9, group_name: "群" });
     await expect(
-      getActionCatalogEntry(Actions.GET_GROUP_MEMBER_INFO)?.execute(client, { group_id: 9, user_id: 2 }),
+      getActionCatalogEntry(Actions.GET_GROUP_MEMBER_INFO)?.execute(client, { group_id: 9, user_id: 2 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ user_id: 2, nickname: "成员" });
     await expect(
-      getActionCatalogEntry(Actions.GET_STRANGER_INFO)?.execute(client, { user_id: 8 }),
+      getActionCatalogEntry(Actions.GET_STRANGER_INFO)?.execute(client, { user_id: 8 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ user_id: 8, nickname: "路人" });
   });
 
@@ -121,40 +122,42 @@ describe("legacy action catalog entries", () => {
     } as unknown as import("@icqqjs/icqq").Client;
 
     await expect(
-      getActionCatalogEntry(Actions.SET_NICKNAME)?.execute(client, { nickname: "bot" }),
+      getActionCatalogEntry(Actions.SET_NICKNAME)?.execute(client, { nickname: "bot" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ nickname: "bot" });
     await expect(
-      getActionCatalogEntry(Actions.SET_GENDER)?.execute(client, { gender: 1 }),
+      getActionCatalogEntry(Actions.SET_GENDER)?.execute(client, { gender: 1 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ gender: 1 });
     await expect(
-      getActionCatalogEntry(Actions.SET_BIRTHDAY)?.execute(client, { birthday: "2026-05-30" }),
+      getActionCatalogEntry(Actions.SET_BIRTHDAY)?.execute(client, { birthday: "2026-05-30" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ birthday: "2026-05-30" });
     await expect(
-      getActionCatalogEntry(Actions.SET_SIGNATURE)?.execute(client, { signature: "hi" }),
+      getActionCatalogEntry(Actions.SET_SIGNATURE)?.execute(client, { signature: "hi" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ signature: "hi" });
     await expect(
-      getActionCatalogEntry(Actions.SET_DESCRIPTION)?.execute(client, { description: "desc" }),
+      getActionCatalogEntry(Actions.SET_DESCRIPTION)?.execute(client, { description: "desc" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ description: "desc" });
     await expect(
-      getActionCatalogEntry(Actions.SET_ONLINE_STATUS)?.execute(client, { status: 11 }),
+      getActionCatalogEntry(Actions.SET_ONLINE_STATUS)?.execute(client, { status: 11 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ status: 11 });
     await expect(
-      getActionCatalogEntry(Actions.FRIEND_LIKE)?.execute(client, { user_id: 7, times: 3 }),
+      getActionCatalogEntry(Actions.FRIEND_LIKE)?.execute(client, { user_id: 7, times: 3 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ userId: 7, times: 3 });
     await expect(
-      getActionCatalogEntry(Actions.GROUP_SIGN)?.execute(client, { group_id: 9 }),
+      getActionCatalogEntry(Actions.GROUP_SIGN)?.execute(client, { group_id: 9 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ groupId: 9 });
   });
 
   it("keeps deprecated subscribe actions available through the canonical catalog", async () => {
+    const stubClient = {} as never;
+    const stubCtx = createStubDaemonContext(stubClient);
     await expect(
-      getActionCatalogEntry(Actions.SUBSCRIBE)?.execute({} as never, {}),
+      getActionCatalogEntry(Actions.SUBSCRIBE)?.execute(stubClient, {}, stubCtx),
     ).resolves.toEqual({
       deprecated: true,
       note: "认证连接后自动推送事件，无需 subscribe",
     });
     await expect(
-      getActionCatalogEntry(Actions.UNSUBSCRIBE)?.execute({} as never, {}),
+      getActionCatalogEntry(Actions.UNSUBSCRIBE)?.execute(stubClient, {}, stubCtx),
     ).resolves.toEqual({
       deprecated: true,
       note: "认证连接后自动推送事件，无需 subscribe",

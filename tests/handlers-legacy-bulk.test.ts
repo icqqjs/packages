@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Actions } from "../src/daemon/protocol.js";
 import { getActionCatalogEntry } from "../src/daemon/action-catalog.js";
-import { handleRequest } from "../src/daemon/handlers.js";
-import { tryGetDaemonContext, initDaemonContext } from "../src/daemon/daemon-context.js";
+import { handleRequest } from "../src/daemon/request-router.js";
+import { createStubDaemonContext } from "./helpers/daemon-test-context.js";
 
 vi.mock("../src/lib/icqq-resolve.js", () => ({
   resolveIcqq: async () => ({
@@ -124,10 +124,6 @@ function createGroupClient() {
 }
 
 describe("legacy handlers bulk matrix", () => {
-  beforeEach(() => {
-    initDaemonContext(null);
-  });
-
   it("executes group moderation and filesystem actions", async () => {
     const { client } = createGroupClient();
 
@@ -136,37 +132,37 @@ describe("legacy handlers bulk matrix", () => {
         group_id: 9,
         user_id: 2,
         duration: 60,
-      }),
+      }, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true });
     expect(client.setGroupBan).toHaveBeenCalled();
 
     await expect(
-      getActionCatalogEntry(Actions.GROUP_MUTE_ALL)?.execute(client, { group_id: 9 }),
+      getActionCatalogEntry(Actions.GROUP_MUTE_ALL)?.execute(client, { group_id: 9 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true });
     await expect(
       getActionCatalogEntry(Actions.GROUP_KICK)?.execute(client, {
         group_id: 9,
         user_id: 2,
         block: false,
-      }),
+      }, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true });
     await expect(
-      getActionCatalogEntry(Actions.GROUP_INVITE)?.execute(client, { group_id: 9, user_id: 2 }),
+      getActionCatalogEntry(Actions.GROUP_INVITE)?.execute(client, { group_id: 9, user_id: 2 }, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true });
     await expect(
-      getActionCatalogEntry(Actions.GFS_LIST)?.execute(client, { group_id: 9 }),
+      getActionCatalogEntry(Actions.GFS_LIST)?.execute(client, { group_id: 9 }, createStubDaemonContext(client)),
     ).resolves.toEqual([]);
     await expect(
       getActionCatalogEntry(Actions.GFS_UPLOAD)?.execute(client, {
         group_id: 9,
         file: "report.pdf",
-      }),
+      }, createStubDaemonContext(client)),
     ).resolves.toEqual({ fid: "f1" });
     await expect(
-      getActionCatalogEntry(Actions.RELOAD_FRIEND_LIST)?.execute(client, {}),
+      getActionCatalogEntry(Actions.RELOAD_FRIEND_LIST)?.execute(client, {}, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true, friendCount: 0 });
     await expect(
-      getActionCatalogEntry(Actions.CLEAN_CACHE)?.execute(client, {}),
+      getActionCatalogEntry(Actions.CLEAN_CACHE)?.execute(client, {}, createStubDaemonContext(client)),
     ).resolves.toEqual({ ok: true });
   });
 
@@ -195,28 +191,27 @@ describe("legacy handlers bulk matrix", () => {
     expect(unknown).toEqual({ id: "3", ok: false, error: "未知操作: not_real" });
   });
 
-  it("executes webhook actions when daemon context is initialized", async () => {
+  it("executes webhook actions with explicit daemon context", async () => {
     const setWebhook = vi.fn(async () => null);
+    const client = {} as import("@icqqjs/icqq").Client;
     const ctx = {
       setWebhookUrl: setWebhook,
       getWebhookUrl: () => "https://example.com/hook",
       setNotifyEnabled: vi.fn(async () => {}),
       notifications: { isEnabled: () => true },
-    };
-    initDaemonContext(ctx as never);
+    } as unknown as import("../src/daemon/daemon-context.js").DaemonContext;
 
-    const client = {} as import("@icqqjs/icqq").Client;
     await expect(
       getActionCatalogEntry(Actions.SET_WEBHOOK)?.execute(client, {
         url: "https://example.com/hook",
-      }),
+      }, ctx),
     ).resolves.toEqual({ webhookUrl: "https://example.com/hook" });
-    await expect(getActionCatalogEntry(Actions.GET_WEBHOOK)?.execute(client, {})).resolves.toEqual({
-      webhookUrl: "https://example.com/hook",
-    });
     await expect(
-      getActionCatalogEntry(Actions.SET_NOTIFY)?.execute(client, { enabled: true }),
+      getActionCatalogEntry(Actions.GET_WEBHOOK)?.execute(client, {}, ctx),
+    ).resolves.toEqual({ webhookUrl: "https://example.com/hook" });
+    await expect(
+      getActionCatalogEntry(Actions.SET_NOTIFY)?.execute(client, { enabled: true }, ctx),
     ).resolves.toEqual({ notifyEnabled: true });
-    expect(tryGetDaemonContext()).toBe(ctx);
+    expect(setWebhook).toHaveBeenCalledWith("https://example.com/hook");
   });
 });

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Actions } from "../src/daemon/protocol.js";
 import { getActionCatalogEntry } from "../src/daemon/action-catalog.js";
-import { initDaemonContext } from "../src/daemon/daemon-context.js";
+import type { DaemonContext } from "../src/daemon/daemon-context.js";
+import { createStubDaemonContext } from "./helpers/daemon-test-context.js";
 
 vi.mock("../src/lib/icqq-resolve.js", () => ({
   resolveIcqq: async () => ({
@@ -321,21 +322,32 @@ const PARAMS: Partial<Record<string, Record<string, unknown>>> = {
   [Actions.SET_NOTIFY]: { enabled: true },
 };
 
-describe("action catalog full matrix", () => {
-  beforeEach(() => {
-    initDaemonContext({
-      setWebhookUrl: vi.fn(async () => null),
-      getWebhookUrl: () => "https://example.com/hook",
-      setNotifyEnabled: vi.fn(async () => {}),
-      notifications: { isEnabled: () => true },
-    } as never);
-  });
+function createWebhookTestContext(): DaemonContext {
+  return {
+    setWebhookUrl: vi.fn(async () => null),
+    getWebhookUrl: () => "https://example.com/hook",
+    setNotifyEnabled: vi.fn(async () => {}),
+    notifications: { isEnabled: () => true },
+  } as unknown as DaemonContext;
+}
 
+const DAEMON_CONFIG_ACTIONS = new Set([
+  Actions.SET_WEBHOOK,
+  Actions.GET_WEBHOOK,
+  Actions.SET_NOTIFY,
+  Actions.GET_NOTIFY,
+]);
+
+describe("action catalog full matrix", () => {
   for (const action of Object.keys(PARAMS)) {
     it(`executes ${action}`, async () => {
       const entry = getActionCatalogEntry(action);
       expect(entry).toBeTruthy();
-      await expect(entry!.execute(createRichClient(), PARAMS[action]!)).resolves.toBeDefined();
+      const client = createRichClient();
+      const ctx = DAEMON_CONFIG_ACTIONS.has(action)
+        ? createWebhookTestContext()
+        : createStubDaemonContext(client);
+      await expect(entry!.execute(client, PARAMS[action]!, ctx)).resolves.toBeDefined();
     });
   }
 
@@ -380,7 +392,7 @@ describe("action catalog full matrix", () => {
         action === Actions.GUILD_MEMBERS
           ? { guild_id: "1" }
           : {};
-      await expect(entry.execute(client, params)).resolves.toBeDefined();
+      await expect(entry.execute(client, params, createStubDaemonContext(client))).resolves.toBeDefined();
     }
   });
 });

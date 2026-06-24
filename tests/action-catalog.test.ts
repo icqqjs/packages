@@ -12,6 +12,7 @@ import {
   getActionMeta,
   listActionMetaEntries,
 } from "../src/daemon/action-meta.js";
+import { createStubDaemonContext } from "./helpers/daemon-test-context.js";
 
 describe("pilot action catalog", () => {
   it("defines the expected read-only pilot actions", () => {
@@ -78,7 +79,9 @@ describe("pilot action catalog", () => {
     const getStatus = getPilotActionCatalogEntry(Actions.GET_STATUS);
     const listFriends = getPilotActionCatalogEntry(Actions.LIST_FRIENDS);
 
-    expect(await ping?.execute({} as never, {})).toEqual({
+    const stubClient = {} as never;
+    const stubCtx = createStubDaemonContext(stubClient);
+    expect(await ping?.execute(stubClient, {}, stubCtx)).toEqual({
       pong: true,
       time: new Date("2026-05-30T00:00:00Z").getTime(),
     });
@@ -96,7 +99,7 @@ describe("pilot action catalog", () => {
       blacklist: new Set([9]),
     } as never;
 
-    expect(await getStatus?.execute(client, {})).toEqual({
+    expect(await getStatus?.execute(client, {}, createStubDaemonContext(client))).toEqual({
       uin: 123,
       nickname: "bot",
       online: true,
@@ -105,7 +108,7 @@ describe("pilot action catalog", () => {
       friendCount: 1,
       groupCount: 1,
     });
-    expect(await listFriends?.execute(client, {})).toEqual([
+    expect(await listFriends?.execute(client, {}, createStubDaemonContext(client))).toEqual([
       { user_id: 1, nickname: "A", remark: "AR", sex: "female", class_id: 2 },
     ]);
 
@@ -140,14 +143,14 @@ describe("pilot action catalog", () => {
     } as unknown as import("@icqqjs/icqq").Client;
 
     await expect(
-      sendPrivate?.execute(client, { user_id: 1, message: "hello" }),
+      sendPrivate?.execute(client, { user_id: 1, message: "hello" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ message_id: "pm-1" });
     await expect(
-      sendTemp?.execute(client, { group_id: 9, user_id: 2, message: "temp hi" }),
+      sendTemp?.execute(client, { group_id: 9, user_id: 2, message: "temp hi" }, createStubDaemonContext(client)),
     ).resolves.toEqual({ message_id: "temp-1" });
     expect(sendTempMsg).toHaveBeenCalledWith(9, 2, "temp hi");
     await expect(
-      historyGroup?.execute(client, { group_id: 9, count: 1 }),
+      historyGroup?.execute(client, { group_id: 9, count: 1 }, createStubDaemonContext(client)),
     ).resolves.toEqual([
       {
         message_id: "g-1",
@@ -160,7 +163,7 @@ describe("pilot action catalog", () => {
         time: 123,
       },
     ]);
-    await expect(markRead?.execute(client, { message_id: "msg-1" })).resolves.toEqual({ ok: true });
+    await expect(markRead?.execute(client, { message_id: "msg-1" }, createStubDaemonContext(client))).resolves.toEqual({ ok: true });
     expect(reportReaded).toHaveBeenCalledWith("msg-1");
   });
 });
