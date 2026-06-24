@@ -8,6 +8,11 @@ import type { IcqqConfig } from "../src/lib/config.js";
 const fetchMock = vi.fn();
 const dispatcherMocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
+  sendPeerAlert: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/alert-peer-send.js", () => ({
+  sendPeerAlert: dispatcherMocks.sendPeerAlert,
 }));
 
 vi.mock("@/lib/config.js", async (importOriginal) => {
@@ -36,6 +41,8 @@ describe("sendDaemonAlert", () => {
     resetAlertCooldownForTests();
     fetchMock.mockReset();
     dispatcherMocks.loadConfig.mockReset();
+    dispatcherMocks.sendPeerAlert.mockReset();
+    dispatcherMocks.sendPeerAlert.mockResolvedValue(undefined);
     fetchMock.mockResolvedValue({ ok: true, text: async () => "" });
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -140,5 +147,30 @@ describe("sendDaemonAlert", () => {
     await sendDaemonAlert("online", { uin: 99 });
     expect(dispatcherMocks.loadConfig).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("peer failure does not block other providers", async () => {
+    dispatcherMocks.sendPeerAlert.mockRejectedValueOnce(new Error("rpc down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await sendDaemonAlert(
+      "offline_network",
+      { uin: 100, reason: "net" },
+      {
+        config: enabledConfig({
+          peer: {
+            host: "10.0.0.1",
+            port: 9100,
+            token: "t",
+            userId: 1,
+          },
+          generic: { url: "https://hooks.example.com/icqq" },
+        }),
+        skipCooldown: true,
+      },
+    );
+    expect(dispatcherMocks.sendPeerAlert).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("[alert] provider failed"));
+    errSpy.mockRestore();
   });
 });

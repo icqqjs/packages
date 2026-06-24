@@ -56,6 +56,34 @@ describe("alert-config", () => {
     expect(resolveAlertsConfig(config).providers).toHaveLength(8);
   });
 
+  it("mergeAlertsFromEnv populates peer provider", () => {
+    process.env.ICQQ_ALERT_PEER_HOST = "10.0.0.3";
+    process.env.ICQQ_ALERT_PEER_PORT = "9100";
+    process.env.ICQQ_ALERT_PEER_TOKEN = "tok";
+    process.env.ICQQ_ALERT_PEER_USER_ID = "111";
+    process.env.ICQQ_ALERT_PEER_GROUP_ID = "222";
+
+    const config = { accounts: {} };
+    mergeAlertsFromEnv(config);
+
+    expect(config.alerts?.providers?.peer).toMatchObject({
+      host: "10.0.0.3",
+      port: 9100,
+      token: "tok",
+      userId: 111,
+      groupId: 222,
+    });
+    const resolved = resolveAlertsConfig(config);
+    expect(resolved.providers).toEqual([
+      expect.objectContaining({
+        type: "peer",
+        host: "10.0.0.3",
+        userId: 111,
+        groupId: 222,
+      }),
+    ]);
+  });
+
   it("buildLoginPublicUrl prefers publicUrl", () => {
     expect(
       buildLoginPublicUrl(

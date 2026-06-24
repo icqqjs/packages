@@ -99,6 +99,22 @@ export function mergeAlertsFromEnv(config: IcqqConfig): void {
   const generic = process.env.ICQQ_ALERT_WEBHOOK_URL?.trim();
   if (generic) map.generic = { ...map.generic, url: generic };
 
+  const peerHost = process.env.ICQQ_ALERT_PEER_HOST?.trim();
+  const peerPort = process.env.ICQQ_ALERT_PEER_PORT?.trim();
+  const peerToken = process.env.ICQQ_ALERT_PEER_TOKEN?.trim();
+  const peerUserId = process.env.ICQQ_ALERT_PEER_USER_ID?.trim();
+  const peerGroupId = process.env.ICQQ_ALERT_PEER_GROUP_ID?.trim();
+  if (peerHost || peerPort || peerToken || peerUserId || peerGroupId) {
+    map.peer = {
+      ...map.peer,
+      ...(peerHost ? { host: peerHost } : {}),
+      ...(peerPort ? { port: Number(peerPort) } : {}),
+      ...(peerToken ? { token: peerToken } : {}),
+      ...(peerUserId ? { userId: Number(peerUserId) } : {}),
+      ...(peerGroupId ? { groupId: Number(peerGroupId) } : {}),
+    };
+  }
+
   if (process.env.ICQQ_ALERTS_ENABLED === "1" || process.env.ICQQ_ALERTS_ENABLED === "true") {
     config.alerts!.enabled = true;
   }

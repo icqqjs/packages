@@ -11,6 +11,12 @@ import type {
   DaemonAlertPayload,
 } from "../src/daemon/alert/types.js";
 
+const sendPeerAlertMock = vi.fn(async () => {});
+
+vi.mock("../src/lib/alert-peer-send.js", () => ({
+  sendPeerAlert: (...args: unknown[]) => sendPeerAlertMock(...args),
+}));
+
 const fetchMock = vi.fn();
 
 const basePayload: DaemonAlertPayload = {
@@ -96,6 +102,7 @@ describe("formatForProvider", () => {
 describe("alert providers HTTP contract", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    sendPeerAlertMock.mockClear();
     fetchMock.mockResolvedValue({ ok: true, text: async () => "" });
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -295,5 +302,28 @@ describe("alert providers HTTP contract", () => {
       await provider.send(formatted, { ...basePayload, reason: "IPC 已就绪" }, "daemon_ready");
     }
     expect(fetchMock).toHaveBeenCalledTimes(8);
+  });
+
+  it("peer: delegates to sendPeerAlert with rpc target and formatted text", async () => {
+    await invokeProvider({
+      type: "peer",
+      host: "192.168.1.5",
+      port: 9200,
+      token: "peer-tok",
+      userId: 99,
+      groupId: 88,
+    });
+    expect(sendPeerAlertMock).toHaveBeenCalledWith(
+      {
+        host: "192.168.1.5",
+        port: 9200,
+        token: "peer-tok",
+        userId: 99,
+        groupId: 88,
+      },
+      expect.stringContaining("需要重新登录"),
+      expect.stringContaining("需要滑块验证"),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -129,6 +129,9 @@ describe("config-set", () => {
     });
     expect(parseConfigSetValue("alerts.cooldownMs", "60000")).toBe(60_000);
     expect(parseConfigSetValue("login.waitingTimeoutMs", "120000")).toBe(120_000);
+    expect(parseConfigSetValue("alerts.providers.peer.port", "9100")).toBe(9100);
+    expect(parseConfigSetValue("alerts.providers.peer.userId", "12345")).toBe(12345);
+    expect(parseConfigSetValue("alerts.providers.peer.groupId", "67890")).toBe(67890);
   });
 
   it("rejects alert provider keys with account scope", () => {

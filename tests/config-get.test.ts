@@ -70,12 +70,21 @@ describe("config-get", () => {
         enabled: true,
         providers: {
           bark: { deviceKey: "key", server: "https://bark.example.com" },
+          peer: {
+            host: "10.0.0.1",
+            port: 9100,
+            token: "tok",
+            userId: 100,
+          },
         },
       },
     };
     expect(getConfigDisplayValue(withAlerts, "alerts.providers.bark.deviceKey")).toBe("key");
+    expect(getConfigDisplayValue(withAlerts, "alerts.providers.peer.host")).toBe("10.0.0.1");
+    expect(getConfigDisplayValue(withAlerts, "alerts.providers.peer.userId")).toBe("100");
     expect(getConfigDisplayValue(withAlerts, "alerts.providers.bark.enabled")).toBe("(未设置)");
     expect(isConfigGetKey("alerts.providers.wecom.webhookKey")).toBe(true);
+    expect(isConfigGetKey("alerts.providers.peer.groupId")).toBe(true);
     const entries = listGroupConfigEntries(withAlerts, "alerts");
     expect(entries.some(([k]) => k === "alerts.providers.bark.deviceKey")).toBe(true);
   });
@@ -87,6 +96,7 @@ describe("config-get", () => {
     expect(isConfigGetQuery("not-real")).toBe(false);
     expect(availableConfigGetKeysHint()).toContain("mcp.http.port");
     expect(availableConfigGetKeysHint()).toContain("alerts.providers.bark.deviceKey");
+    expect(availableConfigGetKeysHint()).toContain("alerts.providers.peer.host");
     expect(availableConfigGetKeysHint()).toContain("rpc");
     expect(availableConfigGetKeysHint()).toContain("login.http.host");
   });

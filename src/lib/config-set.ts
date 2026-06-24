@@ -102,6 +102,18 @@ export function parseConfigSetValue(key: string, raw: string): unknown {
     if (isAlertProviderEnabledField(providerKey.field)) {
       return parseBool(raw);
     }
+    if (
+      providerKey.type === "peer" &&
+      (providerKey.field === "port" ||
+        providerKey.field === "userId" ||
+        providerKey.field === "groupId")
+    ) {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw new Error(`${key} 必须为正整数`);
+      }
+      return n;
+    }
     return raw;
   }
   if (!isFixedConfigSetKey(key)) {

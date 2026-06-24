@@ -18,6 +18,7 @@ export const ALERT_PROVIDER_TYPES = [
   "pushdeer",
   "serverchan",
   "generic",
+  "peer",
 ] as const satisfies readonly AlertProviderType[];
 
 export const ALERT_PROVIDER_FIELDS = {
@@ -29,6 +30,7 @@ export const ALERT_PROVIDER_FIELDS = {
   pushdeer: ["pushkey", "server", "enabled"] as const,
   serverchan: ["sendkey", "enabled"] as const,
   generic: ["url", "enabled"] as const,
+  peer: ["host", "port", "token", "userId", "groupId", "enabled"] as const,
 } satisfies Record<AlertProviderType, readonly string[]>;
 
 export function listAlertProviderConfigKeys(): string[] {
@@ -63,6 +65,15 @@ function isNonEmpty(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function positiveInt(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return undefined;
+}
+
 /** 将 map 展平为运行时 provider 列表（满足必填字段且未禁用） */
 export function flattenAlertProviders(
   map: AlertProvidersMap | undefined,
@@ -70,8 +81,17 @@ export function flattenAlertProviders(
   if (!map) return [];
 
   const out: AlertProviderConfig[] = [];
-  const { bark, wecom, dingtalk, feishu, telegram, pushdeer, serverchan, generic } =
-    map;
+  const {
+    bark,
+    wecom,
+    dingtalk,
+    feishu,
+    telegram,
+    pushdeer,
+    serverchan,
+    generic,
+    peer,
+  } = map;
 
   if (bark && isNonEmpty(bark.deviceKey) && bark.enabled !== false) {
     out.push({
@@ -121,6 +141,23 @@ export function flattenAlertProviders(
   }
   if (generic && isNonEmpty(generic.url) && generic.enabled !== false) {
     out.push({ type: "generic", url: generic.url.trim() });
+  }
+  if (peer && peer.enabled !== false) {
+    const host = peer.host?.trim();
+    const port = positiveInt(peer.port);
+    const token = peer.token?.trim();
+    const userId = positiveInt(peer.userId);
+    const groupId = positiveInt(peer.groupId);
+    if (host && port && token && (userId != null || groupId != null)) {
+      out.push({
+        type: "peer",
+        host,
+        port,
+        token,
+        ...(userId != null ? { userId } : {}),
+        ...(groupId != null ? { groupId } : {}),
+      });
+    }
   }
   return out;
 }

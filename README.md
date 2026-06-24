@@ -253,8 +253,27 @@ icqq service restart
 | `pushdeer` | `alerts.providers.pushdeer.pushkey`、`alerts.providers.pushdeer.server` |
 | `serverchan` | `alerts.providers.serverchan.sendkey` |
 | `generic` | `alerts.providers.generic.url` |
+| `peer` | `alerts.providers.peer.host`、`port`、`token`、`userId` 和/或 `groupId` |
 
 各 type 均支持 `alerts.providers.<type>.enabled`（`true`/`false`）。
+
+#### peer（双机互备）
+
+当账号 A 掉线或需人机登录时，通过**另一台在线守护进程 B** 的 RPC 发送 QQ 私聊和/或群消息。B 需启用 RPC（`rpc.enabled`）且 QQ 已登录；`userId` 与 `groupId` **至少配置其一**，两者都配则各发一条。
+
+```bash
+# B 机：启用 RPC 并记下 token / 端口（icqq service status）
+icqq config set rpc.enabled true
+icqq config set rpc.host 0.0.0.0   # 仅内网时按需
+
+# A 机：配置 peer 指向 B
+icqq config set alerts.enabled true
+icqq config set alerts.providers.peer.host 192.168.1.10
+icqq config set alerts.providers.peer.port 9100
+icqq config set alerts.providers.peer.token "$(cat ~/.icqq/200/daemon.token)"
+icqq config set alerts.providers.peer.userId 123456789    # 私聊管理员
+icqq config set alerts.providers.peer.groupId 987654321     # 可选：值班群
+```
 
 **Bark（iOS）** — 默认服务器 `https://api.day.app`；自建/第三方需设 `server`：
 
@@ -337,6 +356,11 @@ icqq config set alerts.providers.wecom.webhookKey WECOM_KEY
 | `ICQQ_ALERT_PUSHDEER_SERVER` | PushDeer server（可选） |
 | `ICQQ_ALERT_SERVERCHAN_KEY` | Server酱 sendkey |
 | `ICQQ_ALERT_WEBHOOK_URL` | generic webhook URL |
+| `ICQQ_ALERT_PEER_HOST` | peer 对端 RPC 地址 |
+| `ICQQ_ALERT_PEER_PORT` | peer 对端 RPC 端口 |
+| `ICQQ_ALERT_PEER_TOKEN` | peer 对端 daemon token |
+| `ICQQ_ALERT_PEER_USER_ID` | peer 私聊目标 QQ（可选） |
+| `ICQQ_ALERT_PEER_GROUP_ID` | peer 群目标号（可选） |
 
 示例（systemd `Environment=` 或 shell）：
 

@@ -14,6 +14,7 @@ Accepted
 
 - **5 类事件**：`daemon_ready`、`login_waiting`、`offline_network`、`offline_kickoff`、`online`（每次 `system.online`，接受噪音，靠 per-kind cooldown 默认 15min）
 - **8 路内置 provider**：bark、wecom、dingtalk、feishu、telegram、pushdeer、serverchan、generic；**邮件首版不做**
+- **peer provider**（ADR-0006）：经对端守护进程 RPC 发 QQ 私聊/群聊，用于双机互备
 - **配置**：`alerts.providers.<type>.<field>` 对象 + 可选 `ICQQ_ALERT_*` 环境变量；广播投递；正文按 channel 富文本
 - **安全**：告警正文使用 `login.http.publicUrl/login`，**不含** IPC token
 

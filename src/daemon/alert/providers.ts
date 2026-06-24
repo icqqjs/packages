@@ -7,6 +7,7 @@ import type {
   FormattedAlert,
 } from "./types.js";
 import { buildAlertContent, providerUsesMarkdown } from "./format.js";
+import { sendPeerAlert } from "@/lib/alert-peer-send.js";
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const res = await fetch(url, {
@@ -145,6 +146,23 @@ function createProvider(config: AlertProviderConfig): AlertProvider {
             loginUrl: payload.loginUrl,
             suggestedCli: payload.suggestedCli,
           });
+        },
+      };
+    case "peer":
+      return {
+        type: "peer",
+        async send(formatted) {
+          await sendPeerAlert(
+            {
+              host: config.host,
+              port: config.port,
+              token: config.token,
+              userId: config.userId,
+              groupId: config.groupId,
+            },
+            formatted.title,
+            formatted.body,
+          );
         },
       };
     default:

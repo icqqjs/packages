@@ -31,7 +31,7 @@ MCP layer entry at `src/mcp/server.ts` with blocked-action policy in `src/mcp/po
 
 ## AlertDispatcher
 
-Module at `src/daemon/alert/` broadcasting lifecycle alerts (`daemon_ready`, `login_waiting`, `offline_*`, `online`) to configured providers when `alerts.enabled`. Cooldown is per-kind in-process.
+Module at `src/daemon/alert/` broadcasting lifecycle alerts (`daemon_ready`, `login_waiting`, `offline_*`, `online`) to configured providers when `alerts.enabled`. Cooldown is per-kind in-process. **`peer`** provider relays alerts via another daemon’s RPC (`send_private_msg` / `send_group_msg`).
 
 ## LoginSession / LoginWaitingRuntime
 

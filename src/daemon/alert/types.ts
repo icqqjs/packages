@@ -13,7 +13,8 @@ export type AlertProviderType =
   | "telegram"
   | "pushdeer"
   | "serverchan"
-  | "generic";
+  | "generic"
+  | "peer";
 
 export type AlertProviderConfig =
   | { type: "bark"; deviceKey: string; server?: string; enabled?: boolean }
@@ -23,7 +24,16 @@ export type AlertProviderConfig =
   | { type: "telegram"; botToken: string; chatId: string; enabled?: boolean }
   | { type: "pushdeer"; pushkey: string; server?: string; enabled?: boolean }
   | { type: "serverchan"; sendkey: string; enabled?: boolean }
-  | { type: "generic"; url: string; enabled?: boolean };
+  | { type: "generic"; url: string; enabled?: boolean }
+  | {
+      type: "peer";
+      host: string;
+      port: number;
+      token: string;
+      userId?: number;
+      groupId?: number;
+      enabled?: boolean;
+    };
 
 /** config.json 中按 type 分组的告警渠道（CLI: alerts.providers.<type>.<field>） */
 export type AlertProvidersMap = {
@@ -35,6 +45,14 @@ export type AlertProvidersMap = {
   pushdeer?: { pushkey?: string; server?: string; enabled?: boolean };
   serverchan?: { sendkey?: string; enabled?: boolean };
   generic?: { url?: string; enabled?: boolean };
+  peer?: {
+    host?: string;
+    port?: number;
+    token?: string;
+    userId?: number;
+    groupId?: number;
+    enabled?: boolean;
+  };
 };
 
 export type AlertsConfig = {
