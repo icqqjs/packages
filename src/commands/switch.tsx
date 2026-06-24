@@ -92,7 +92,12 @@ export default function Switch({ args: [qq] }: Props) {
           }
           config.currentUin = qq;
           await saveConfig(config);
-          setDone(`已切换到账号 ${qq}`);
+          const running = await isDaemonRunning(qq);
+          setDone(
+            running
+              ? `已切换到账号 ${qq}`
+              : `已切换到账号 ${qq}（守护进程未运行，可执行 icqq login -q ${qq} -r 或 icqq service start ${qq}）`,
+          );
         } catch (e) {
           setError(e instanceof Error ? e.message : String(e));
         }
@@ -146,7 +151,12 @@ export default function Switch({ args: [qq] }: Props) {
       const config = await loadConfig();
       config.currentUin = uin;
       await saveConfig(config);
-      setDone(`已切换到账号 ${uin}`);
+      const running = await isDaemonRunning(uin);
+      setDone(
+        running
+          ? `已切换到账号 ${uin}`
+          : `已切换到账号 ${uin}（守护进程未运行，可执行 icqq login -q ${uin} -r 或 icqq service start ${uin}）`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

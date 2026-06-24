@@ -19,7 +19,7 @@ export class DaemonContext {
   ) {
     this.client = client;
     this.uin = uin;
-    this.notifications = new NotificationService(options.notifyEnabled ?? false);
+    this.notifications = new NotificationService(uin, options.notifyEnabled ?? false);
     this.webhookUrl = options.webhookUrl ?? "";
   }
 

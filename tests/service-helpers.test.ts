@@ -40,6 +40,9 @@ describe("service _helpers", () => {
     expect(xml).toContain("com.icqq.daemon.24680");
     expect(xml).toContain("<string>24680</string>");
     expect(xml).toContain("entry.js");
+    expect(xml).toContain("PathState");
+    expect(xml).toContain("daemon.stopped");
+    expect(xml).not.toContain("SuccessfulExit");
   });
 
   it("buildSystemdUnit includes uin and restart policy", () => {

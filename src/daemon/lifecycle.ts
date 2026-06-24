@@ -18,6 +18,7 @@ import {
   getPidPath,
   getSocketPath,
   getTokenPath,
+  clearDaemonStoppedFlag,
 } from "@/lib/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -109,6 +110,8 @@ export async function spawnDaemon(uin: number): Promise<void> {
   if (await isDaemonRunning(uin)) {
     throw new Error(`账号 ${uin} 的守护进程已在运行中`);
   }
+
+  await clearDaemonStoppedFlag(uin);
 
   await fs.mkdir(getAccountDir(uin), { recursive: true, mode: 0o700 });
 

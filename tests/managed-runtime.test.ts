@@ -121,7 +121,10 @@ describe("ManagedRuntime", () => {
       cleanupPaths: ["/tmp/a", "/tmp/b"],
       fsOps: {
         unlink: vi.fn(async (path: string) => { steps.push(`unlink:${path}`); }),
+        mkdir: vi.fn(async (dir: string) => { steps.push(`mkdir:${dir}`); }),
+        writeFile: vi.fn(async (file: string) => { steps.push(`writeFile:${file}`); }),
       },
+      stoppedFlagPath: "/tmp/icqq/stopped",
       processRef,
       logger: { log: vi.fn((msg: string) => { steps.push(msg); }) },
     });
@@ -134,6 +137,8 @@ describe("ManagedRuntime", () => {
       "server.stop",
       "client.logout",
       "client.terminate",
+      "mkdir:/tmp/icqq",
+      "writeFile:/tmp/icqq/stopped",
       "unlink:/tmp/a",
       "unlink:/tmp/b",
     ]);
@@ -277,5 +282,102 @@ describe("ManagedRuntime", () => {
     expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
     expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
     expect(steps).toEqual(["[daemon] 被踢下线: bye"]);
+  });
+
+  it("deduplicates concurrent reconnect attempts", async () => {
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    let resolveSleep: (() => void) | null = null;
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSleep = resolve;
+          }),
+      ),
+      awaitReconnectOutcome: vi.fn(async () => {}),
+      reconnectPolicy: { maxRetries: 3, delaysSeconds: [1, 2, 3] },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    const first = client.listeners.get("system.offline.network")?.({ message: "lost" });
+    const second = client.listeners.get("system.offline.network")?.({ message: "lost again" });
+    resolveSleep?.();
+    await Promise.all([first, second]);
+
+    expect(client.login).toHaveBeenCalledTimes(1);
+    expect(notifications.notifyReconnectSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts in-flight reconnect when shutdown is requested", async () => {
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    let resolveSleep: (() => void) | null = null;
+    const processRef = createProcessStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSleep = resolve;
+          }),
+      ),
+      awaitReconnectOutcome: vi.fn(async () => {}),
+      reconnectPolicy: { maxRetries: 3, delaysSeconds: [1, 2, 3] },
+      processRef,
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    const reconnect = client.listeners.get("system.offline.network")?.({ message: "lost" });
+    await runtime.shutdown("SIGTERM");
+    resolveSleep?.();
+    await reconnect;
+
+    expect(client.login).not.toHaveBeenCalled();
+    expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
+    expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
+    expect(processRef.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("exits process when reconnect exhaust action is exit", async () => {
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    const processRef = createProcessStub();
+    client.login.mockRejectedValue(new Error("boom"));
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(async () => {}),
+      reconnectPolicy: { maxRetries: 1, delaysSeconds: [1] },
+      reconnectExhaustAction: "exit",
+      processRef,
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    await client.listeners.get("system.offline.network")?.({ message: "lost" });
+
+    expect(notifications.notifyReconnectFailed).toHaveBeenCalledTimes(1);
+    expect(processRef.exit).toHaveBeenCalledWith(1);
   });
 });

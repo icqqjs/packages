@@ -10,7 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@/lib/config.js";
-import { getLogPath } from "@/lib/paths.js";
+import { getLogPath, getDaemonStoppedPath, clearDaemonStoppedFlag } from "@/lib/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +47,7 @@ export function buildLaunchdPlist(uin: number): string {
   const entryPath = getEntryPath();
   const logPath = getLogPath(uin);
   const label = getLaunchdLabel(uin);
+  const stoppedPath = getDaemonStoppedPath(uin);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,8 +65,11 @@ export function buildLaunchdPlist(uin: number): string {
     <true/>
     <key>KeepAlive</key>
     <dict>
-        <key>SuccessfulExit</key>
-        <false/>
+        <key>PathState</key>
+        <dict>
+            <key>${stoppedPath}</key>
+            <false/>
+        </dict>
     </dict>
     <key>StandardOutPath</key>
     <string>${logPath}</string>
@@ -200,6 +204,7 @@ export async function installService(
   uin: number,
   log: (s: string) => void,
 ): Promise<void> {
+  await clearDaemonStoppedFlag(uin);
   await cleanupLegacyGlobalService(log);
   if (process.platform === "darwin") {
     await _installLaunchd(uin, log);
@@ -223,6 +228,7 @@ export async function startService(
   uin: number,
   log: (s: string) => void,
 ): Promise<void> {
+  await clearDaemonStoppedFlag(uin);
   if (process.platform === "darwin") {
     await _startLaunchd(uin, log);
   } else {

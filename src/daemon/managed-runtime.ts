@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 
 type RuntimeClient = {
   login(uin: number): Promise<void>;
@@ -25,7 +26,9 @@ type RuntimeProcess = Pick<NodeJS.Process, "on" | "send" | "disconnect" | "exit"
   _icqqLogoutDone?: boolean;
 };
 
-type RuntimeFs = Pick<typeof fs, "unlink">;
+type RuntimeFs = Pick<typeof fs, "unlink" | "writeFile" | "mkdir">;
+
+export type ReconnectExhaustAction = "exit" | "stay-offline";
 
 export type ManagedRuntimeOptions = {
   uin: number;
@@ -35,6 +38,7 @@ export type ManagedRuntimeOptions = {
   rpcConfig?: { enabled: boolean; host: string } | null;
   mcpHost?: RuntimeMcpHost | null;
   cleanupPaths?: string[];
+  stoppedFlagPath?: string;
   fsOps?: RuntimeFs;
   processRef?: RuntimeProcess;
   logger?: Pick<Console, "log">;
@@ -44,6 +48,7 @@ export type ManagedRuntimeOptions = {
     maxRetries: number;
     delaysSeconds: number[];
   };
+  reconnectExhaustAction?: ReconnectExhaustAction;
 };
 
 export type ManagedRuntimeLifecycleNotifications = {
@@ -59,6 +64,37 @@ export type ManagedRuntimeStartInfo = {
   mcpUrl: string | null;
 };
 
+/** 重连时监听交互式登录事件，避免静默耗尽重试次数 */
+export function createInteractiveLoginAwaitOutcome(
+  timeoutMs = 15000,
+): (client: RuntimeClient) => Promise<void> {
+  return (client) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("重连超时")), timeoutMs);
+      const finish = (fn: () => void) => {
+        clearTimeout(timer);
+        fn();
+      };
+
+      client.once("system.online", () => finish(resolve));
+      client.once("system.login.error", (event: { message: string }) => {
+        finish(() => reject(new Error(event.message)));
+      });
+      client.once("system.login.qrcode", () => {
+        finish(() => reject(new Error("需要扫码验证，请执行 icqq login")));
+      });
+      client.once("system.login.slider", () => {
+        finish(() => reject(new Error("需要滑块验证，请执行 icqq login")));
+      });
+      client.once("system.login.device", () => {
+        finish(() => reject(new Error("需要设备验证，请执行 icqq login")));
+      });
+      client.once("system.login.auth", () => {
+        finish(() => reject(new Error("需要身份验证，请执行 icqq login")));
+      });
+    });
+}
+
 export class ManagedRuntime {
   private readonly uin: number;
   private readonly socketPath: string;
@@ -67,6 +103,7 @@ export class ManagedRuntime {
   private readonly rpcConfig: { enabled: boolean; host: string } | null;
   private mcpHost: RuntimeMcpHost | null;
   private readonly cleanupPaths: string[];
+  private readonly stoppedFlagPath: string | null;
   private readonly fsOps: RuntimeFs;
   private readonly processRef: RuntimeProcess;
   private readonly logger: Pick<Console, "log">;
@@ -76,8 +113,10 @@ export class ManagedRuntime {
     maxRetries: number;
     delaysSeconds: number[];
   };
+  private readonly reconnectExhaustAction: ReconnectExhaustAction;
   private shutdownPromise: Promise<void> | null = null;
   private reconnectPromise: Promise<void> | null = null;
+  private reconnectAborted = false;
 
   constructor(options: ManagedRuntimeOptions) {
     this.uin = options.uin;
@@ -87,28 +126,18 @@ export class ManagedRuntime {
     this.rpcConfig = options.rpcConfig ?? null;
     this.mcpHost = options.mcpHost ?? null;
     this.cleanupPaths = options.cleanupPaths ?? [];
+    this.stoppedFlagPath = options.stoppedFlagPath ?? null;
     this.fsOps = options.fsOps ?? fs;
     this.processRef = options.processRef ?? process;
     this.logger = options.logger ?? console;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.awaitReconnectOutcome =
-      options.awaitReconnectOutcome ??
-      ((client) =>
-        new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("重连超时")), 15000);
-          client.once("system.online", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-          client.once("system.login.error", (event: { message: string }) => {
-            clearTimeout(timer);
-            reject(new Error(event.message));
-          });
-        }));
+      options.awaitReconnectOutcome ?? createInteractiveLoginAwaitOutcome();
     this.reconnectPolicy = options.reconnectPolicy ?? {
       maxRetries: 5,
       delaysSeconds: [5, 10, 30, 60, 120],
     };
+    this.reconnectExhaustAction = options.reconnectExhaustAction ?? "stay-offline";
   }
 
   async start(): Promise<ManagedRuntimeStartInfo> {
@@ -168,9 +197,12 @@ export class ManagedRuntime {
 
     this.reconnectPromise = (async () => {
       for (let i = 0; i < this.reconnectPolicy.maxRetries; i++) {
+        if (this.reconnectAborted) return;
+
         const delay = this.reconnectPolicy.delaysSeconds[i]!;
         this.logger.log(`[daemon] ${delay}s 后尝试第 ${i + 1} 次重连…`);
         await this.sleep(delay * 1000);
+        if (this.reconnectAborted) return;
 
         try {
           await this.client.login(this.uin);
@@ -189,6 +221,9 @@ export class ManagedRuntime {
         `[daemon] ${this.reconnectPolicy.maxRetries} 次重连均失败，放弃重连`,
       );
       notifications.notifyReconnectFailed();
+      if (this.reconnectExhaustAction === "exit") {
+        this.processRef.exit(1);
+      }
     })().finally(() => {
       this.reconnectPromise = null;
     });
@@ -199,6 +234,7 @@ export class ManagedRuntime {
   shutdown(signal: string): Promise<void> {
     if (this.shutdownPromise) return this.shutdownPromise;
 
+    this.reconnectAborted = true;
     this.shutdownPromise = (async () => {
       this.logger.log(`[daemon] 收到 ${signal}，正在关闭…`);
 
@@ -218,6 +254,20 @@ export class ManagedRuntime {
       }
 
       this.client.terminate();
+
+      if (this.stoppedFlagPath) {
+        try {
+          await this.fsOps.mkdir(path.dirname(this.stoppedFlagPath), {
+            recursive: true,
+            mode: 0o700,
+          });
+          await this.fsOps.writeFile(this.stoppedFlagPath, `${Date.now()}\n`, {
+            mode: 0o600,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
 
       for (const path of this.cleanupPaths) {
         try {

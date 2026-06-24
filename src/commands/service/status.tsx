@@ -14,6 +14,7 @@ import {
 } from "./_helpers.js";
 import { readMcpEndpoint, formatMcpUrl } from "@/lib/paths.js";
 import { resolveMcpConfigForUin, loadConfig } from "@/lib/config.js";
+import { formatServiceError } from "@/lib/cli-errors.js";
 import { getDaemonPid, isDaemonRunning } from "@/daemon/lifecycle.js";
 
 export const description = "查看系统服务状态（默认全部已配置账号；可指定 QQ 号）";
@@ -34,6 +35,8 @@ type AccountStatus = ServiceState & {
   daemonPid: number | null;
   mcpUrl: string | null;
   isCurrent: boolean;
+  pidMismatch: boolean;
+  serviceDaemonDrift: boolean;
 };
 
 function StatusLine({ s }: { s: AccountStatus }) {
@@ -67,6 +70,8 @@ function StatusLine({ s }: { s: AccountStatus }) {
       {" "}
       <Text color={s.daemonRunning ? "green" : "yellow"}>{daemon}</Text>
       {s.mcpUrl ? <Text color="cyan"> MCP:{s.mcpUrl}</Text> : null}
+      {s.pidMismatch ? <Text color="red"> ⚠服务PID与守护进程不一致</Text> : null}
+      {s.serviceDaemonDrift ? <Text color="red"> ⚠服务在跑但守护进程未就绪</Text> : null}
     </Text>
   );
 }
@@ -107,6 +112,12 @@ function StatusDetail({ s }: { s: AccountStatus }) {
       {s.mcpUrl ? (
         <Box gap={1}><Text bold>MCP：</Text><Text color="cyan">{s.mcpUrl}</Text></Box>
       ) : null}
+      {s.pidMismatch ? (
+        <Text color="red">服务 PID 与守护进程 PID 不一致，可能处于崩溃循环</Text>
+      ) : null}
+      {s.serviceDaemonDrift ? (
+        <Text color="red">系统服务显示运行中，但守护进程 socket 不可达</Text>
+      ) : null}
     </Box>
   );
 }
@@ -146,6 +157,12 @@ export default function ServiceStatus({ args: [argUin] }: Props) {
             daemonPid,
             mcpUrl,
             isCurrent: config.currentUin === uin,
+            pidMismatch:
+              svc.running &&
+              svc.pid !== null &&
+              daemonPid !== null &&
+              svc.pid !== daemonPid,
+            serviceDaemonDrift: svc.running && !daemonRunning,
           });
         }
 
@@ -173,7 +190,7 @@ export default function ServiceStatus({ args: [argUin] }: Props) {
   }, [loading, fatalError, exit]);
 
   if (loading) return <Spinner label="查询服务状态…" />;
-  if (fatalError) return <Text color="red">错误: {fatalError}</Text>;
+  if (fatalError) return <Text color="red">{formatServiceError(fatalError)}</Text>;
 
   if (results.length === 1) {
     return <StatusDetail s={results[0]!} />;

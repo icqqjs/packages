@@ -69,6 +69,50 @@ icqq -u 12345 profile
 ICQQ_CURRENT_UIN=12345 icqq friend list
 ```
 
+### 脚本化输出（`--json`）
+
+多数 IPC 命令支持全局 `--json`，输出结构化 JSON 并设置 `exitCode`：
+
+```bash
+icqq --json -u 12345 friend list
+icqq --json profile
+```
+
+失败时 stderr 输出 `{"ok":false,"error":"..."}`，进程退出码为 `1`。
+
+### Shell 补全
+
+```bash
+# zsh
+eval "$(icqq completion zsh)"
+
+# bash
+eval "$(icqq completion bash)"
+
+# fish
+icqq completion fish | source
+```
+
+### 频道子命令别名
+
+`icqq channel <子命令>` 与 `icqq guild channel <子命令>` 等价，推荐使用后者的完整路径。
+
+### 登录与网络（补充）
+
+- 首次 `icqq login` 会引导配置全局 MCP/RPC 开关；端口写入当前账号
+- 二次登录可为单账号覆盖 MCP/RPC 端口（`icqq config set` 支持账号级 `-u`）
+- 237 身份验证需按终端提示在浏览器控制台注入设备信息
+- 端口冲突时登录向导会报错；也可执行 `icqq service status` 查看 MCP 端口
+
+### 故障排查
+
+| 现象 | 处理 |
+|------|------|
+| 守护进程已在运行 | `icqq service stop` 或 `icqq logout -k` 后重试 |
+| 守护进程未运行 | `icqq login -r` 或 `icqq service start` |
+| MCP 端口冲突 | `icqq config set mcp.http.port 0` 后 `icqq service restart` |
+| macOS 服务 logout 后仍重启 | 正常退出会写入 `daemon.stopped`；需再次 `service start` 清除标记 |
+
 ## 命令一览
 
 ### 账号

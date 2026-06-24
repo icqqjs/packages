@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from "react";
-import { Text, Box, useApp } from "ink";
+import React, { useState } from "react";
+import { Text, Box } from "ink";
 import zod from "zod";
 import { argument } from "pastel";
-import { Spinner } from "@/components/Spinner.js";
+import { IpcCommand } from "@/components/IpcCommand.js";
 import { FriendSelector } from "@/components/Selectors.js";
-import { resolveUin } from "@/lib/config.js";
-import { IpcClient } from "@/lib/ipc-client.js";
-import { isDaemonRunning } from "@/daemon/lifecycle.js";
 import { Actions } from "@/daemon/protocol.js";
 
 export const description = "查看好友资料";
@@ -25,55 +22,25 @@ type Props = {
 };
 
 function FriendInfo({ uid }: { uid: number }) {
-  const { exit } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [info, setInfo] = useState<any>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const uin = await resolveUin();
-        if (!(await isDaemonRunning(uin)))
-          throw new Error("守护进程未运行，请先执行 icqq login");
-
-        const ipc = await IpcClient.connect(uin);
-        const resp = await ipc.request(Actions.GET_FRIEND_INFO, { uid });
-        ipc.close();
-
-        if (!resp.ok) throw new Error(resp.error ?? "请求失败");
-        setInfo(resp.data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-      setLoading(false);
-    })();
-  }, [uid]);
-
-  useEffect(() => {
-    if (!loading) {
-      if (error) process.exitCode = 1;
-      const timer = setTimeout(() => exit(), error ? 2000 : 100);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, error, exit]);
-
-  if (loading) return <Spinner label="查询好友资料…" />;
-  if (error) return <Text color="red">✖ {error}</Text>;
-  if (!info) return null;
-
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold color="cyan">
-        好友资料
-      </Text>
-      <Text>QQ号: {info.user_id}</Text>
-      <Text>昵称: {info.nickname}</Text>
-      {info.remark && <Text>备注: {info.remark}</Text>}
-      {info.sex !== undefined && <Text>性别: {info.sex}</Text>}
-      {info.age !== undefined && <Text>年龄: {info.age}</Text>}
-      {info.area && <Text>地区: {info.area}</Text>}
-    </Box>
+    <IpcCommand
+      action={Actions.GET_FRIEND_INFO}
+      params={{ uid }}
+      loadingText="查询好友资料…"
+      render={(info) => (
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold color="cyan">
+            好友资料
+          </Text>
+          <Text>QQ号: {info.user_id}</Text>
+          <Text>昵称: {info.nickname}</Text>
+          {info.remark && <Text>备注: {info.remark}</Text>}
+          {info.sex !== undefined && <Text>性别: {info.sex}</Text>}
+          {info.age !== undefined && <Text>年龄: {info.age}</Text>}
+          {info.area && <Text>地区: {info.area}</Text>}
+        </Box>
+      )}
+    />
   );
 }
 

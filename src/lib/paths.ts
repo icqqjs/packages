@@ -60,6 +60,26 @@ export function getMcpEndpointPath(uin: number): string {
   return path.join(getAccountDir(uin), "daemon.mcp");
 }
 
+/** 优雅退出标记；存在时 launchd 不再自动重启 */
+export function getDaemonStoppedPath(uin: number): string {
+  return path.join(getAccountDir(uin), "daemon.stopped");
+}
+
+export async function clearDaemonStoppedFlag(uin: number): Promise<void> {
+  try {
+    await fs.unlink(getDaemonStoppedPath(uin));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function markDaemonGracefulStop(uin: number): Promise<void> {
+  await fs.mkdir(getAccountDir(uin), { recursive: true, mode: 0o700 });
+  await fs.writeFile(getDaemonStoppedPath(uin), `${Date.now()}\n`, {
+    mode: 0o600,
+  });
+}
+
 export type McpEndpointFile = {
   host: string;
   port: number;

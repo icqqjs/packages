@@ -15,6 +15,7 @@ import {
   getTokenPath,
   getRpcPortPath,
   getMcpEndpointPath,
+  getDaemonStoppedPath,
 } from "@/lib/paths.js";
 import { McpHost } from "@/mcp/host.js";
 import {
@@ -104,14 +105,15 @@ async function main() {
       server,
       rpcConfig,
       mcpHost,
-      cleanupPaths: [
-        getPidPath(uin),
-        getSocketPath(uin),
-        getTokenPath(uin),
-        getRpcPortPath(uin),
-        getMcpEndpointPath(uin),
-      ],
-    });
+    cleanupPaths: [
+      getPidPath(uin),
+      getSocketPath(uin),
+      getTokenPath(uin),
+      getRpcPortPath(uin),
+      getMcpEndpointPath(uin),
+    ],
+    stoppedFlagPath: getDaemonStoppedPath(uin),
+  });
     const managedStart = await managedRuntime.start();
     started = true;
     console.log(
