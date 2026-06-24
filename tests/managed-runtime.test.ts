@@ -385,7 +385,7 @@ describe("ManagedRuntime", () => {
 describe("createInteractiveLoginAwaitOutcome", () => {
   it("resolves on system.online", async () => {
     const { createInteractiveLoginAwaitOutcome } = await import(
-      "../src/daemon/managed-runtime.js"
+      "../src/lib/account-bootstrap.js"
     );
     const listeners = new Map<string, (event?: unknown) => void>();
     const client = {
@@ -402,7 +402,7 @@ describe("createInteractiveLoginAwaitOutcome", () => {
 
   it("rejects on interactive login events and errors", async () => {
     const { createInteractiveLoginAwaitOutcome } = await import(
-      "../src/daemon/managed-runtime.js"
+      "../src/lib/account-bootstrap.js"
     );
 
     const cases: Array<[string, unknown, string]> = [
@@ -429,7 +429,7 @@ describe("createInteractiveLoginAwaitOutcome", () => {
   it("rejects on timeout", async () => {
     vi.useFakeTimers();
     const { createInteractiveLoginAwaitOutcome } = await import(
-      "../src/daemon/managed-runtime.js"
+      "../src/lib/account-bootstrap.js"
     );
     const client = { once: vi.fn() };
     const outcome = createInteractiveLoginAwaitOutcome(1000)(client);

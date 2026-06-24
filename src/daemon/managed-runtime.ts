@@ -64,36 +64,7 @@ export type ManagedRuntimeStartInfo = {
   mcpUrl: string | null;
 };
 
-/** 重连时监听交互式登录事件，避免静默耗尽重试次数 */
-export function createInteractiveLoginAwaitOutcome(
-  timeoutMs = 15000,
-): (client: RuntimeClient) => Promise<void> {
-  return (client) =>
-    new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("重连超时")), timeoutMs);
-      const finish = (fn: () => void) => {
-        clearTimeout(timer);
-        fn();
-      };
-
-      client.once("system.online", () => finish(resolve));
-      client.once("system.login.error", (event: { message: string }) => {
-        finish(() => reject(new Error(event.message)));
-      });
-      client.once("system.login.qrcode", () => {
-        finish(() => reject(new Error("需要扫码验证，请执行 icqq login")));
-      });
-      client.once("system.login.slider", () => {
-        finish(() => reject(new Error("需要滑块验证，请执行 icqq login")));
-      });
-      client.once("system.login.device", () => {
-        finish(() => reject(new Error("需要设备验证，请执行 icqq login")));
-      });
-      client.once("system.login.auth", () => {
-        finish(() => reject(new Error("需要身份验证，请执行 icqq login")));
-      });
-    });
-}
+import { createInteractiveLoginAwaitOutcome } from "@/lib/account-bootstrap.js";
 
 export class ManagedRuntime {
   private readonly uin: number;

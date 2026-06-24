@@ -9,31 +9,22 @@ import { Spinner } from "@/components/Spinner.js";
 import { resolveIcqq } from "@/lib/icqq-resolve.js";
 import {
   loadConfig,
-  saveConfig,
-  setAccountConfig,
   getAccountConfig,
   type AccountConfig,
   type IcqqConfig,
 } from "@/lib/config.js";
+import { runPostLoginSetup } from "@/lib/account-bootstrap.js";
 import {
   DEFAULT_NETWORK_SETUP,
   accountNetworkDefaultsFromConfig,
-  findNetworkPortConflict,
   isGlobalNetworkConfigured,
-  persistAccountNetworkSetup,
-  persistGlobalNetworkSetup,
-  syncAssignedPortsToAccount,
   type NetworkSetupChoice,
 } from "@/lib/login-network-setup.js";
 import {
   getAccountDir,
   getTmpDir,
 } from "@/lib/paths.js";
-import {
-  spawnDaemon,
-  isDaemonRunning,
-  stopDaemon,
-} from "@/daemon/lifecycle.js";
+import { isDaemonRunning, spawnDaemon } from "@/daemon/lifecycle.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -223,79 +214,19 @@ export default function Login({ options: opts }: Props) {
 
   const handleLoginComplete = async () => {
     if (!client) return;
-    const actualUin = client.uin as number;
     setStatus("post-login");
 
     try {
-      // 扫码登录使用临时目录，成功后迁入正式账号目录
-      const tmpDir = getTmpDir();
-      if (path.resolve(dataDir) === path.resolve(tmpDir)) {
-        const accountDir = getAccountDir(actualUin);
-        await fs.mkdir(accountDir, { recursive: true });
-        for (const entry of await fs.readdir(tmpDir, {
-          withFileTypes: true,
-        })) {
-          const src = path.join(tmpDir, entry.name);
-          const dest = path.join(accountDir, entry.name);
-          await fs.cp(src, dest, { recursive: true, force: true });
-        }
-        await fs.rm(tmpDir, { recursive: true, force: true });
-      }
-
-      // Save config
-      const config = await loadConfig();
-      setAccountConfig(config, actualUin, {
-        platform: finalOpts.platform,
-        signApiUrl: finalOpts.signApiUrl ?? "",
-        ver: finalOpts.ver || savedAccount?.ver,
+      const result = await runPostLoginSetup({
+        client,
+        dataDir,
+        finalOpts,
+        savedAccount,
+        firstNetworkSetup,
       });
-      if (config.currentUin == null) {
-        config.currentUin = actualUin;
-      }
-
-      if (firstNetworkSetup) {
-        persistGlobalNetworkSetup(config, finalOpts.network);
-        setNetworkSavedScope("global");
-      } else {
-        setNetworkSavedScope("account");
-      }
-
-      const conflict = findNetworkPortConflict(
-        config,
-        actualUin,
-        finalOpts.network,
-      );
-      if (conflict) {
-        throw new Error(conflict);
-      }
-      persistAccountNetworkSetup(config, actualUin, finalOpts.network);
-      await saveConfig(config);
-
-      // Terminate login client (don't logout — preserve token)
-      try {
-        client.terminate();
-      } catch {
-        /* ignore */
-      }
-
-      // Stop existing daemon if running
-      if (await isDaemonRunning(actualUin)) {
-        await stopDaemon(actualUin);
-      }
-
-      // Spawn daemon
+      setNetworkSavedScope(result.networkSavedScope);
+      setAssignedPortNote(result.assignedPortNote);
       setStatus("starting-daemon");
-      await spawnDaemon(actualUin);
-
-      const assigned = await syncAssignedPortsToAccount(config, actualUin);
-      await saveConfig(config);
-      const parts: string[] = [];
-      if (assigned.mcpPort) parts.push(`MCP ${assigned.mcpPort}`);
-      if (assigned.rpcPort) parts.push(`RPC ${assigned.rpcPort}`);
-      if (parts.length > 0) {
-        setAssignedPortNote(`端口已写入账号配置：${parts.join("，")}`);
-      }
-
       setStatus("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -17,6 +17,7 @@ import {
   shouldShowDeviceVerifyChooser,
   type DeviceVerifyOption,
 } from "@/lib/login-device-verify.js";
+import { bindInteractiveLoginHandlers } from "@/lib/account-bootstrap.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -217,13 +218,14 @@ export function LoginFlow({
       setPhaseError("");
     };
 
-    const onQrcodeWrapper = (ev: any) => void onQrcode(ev);
-    client.on("system.online", onOnline);
-    client.on("system.login.error", onLoginError);
-    client.on("system.login.qrcode", onQrcodeWrapper);
-    client.on("system.login.slider", onSlider);
-    client.on("system.login.device", onDevice);
-    client.on("system.login.auth", onAuth);
+    const dispose = bindInteractiveLoginHandlers(client, {
+      onOnline: onOnline,
+      onLoginError: onLoginError,
+      onQrcode: (ev) => void onQrcode(ev as { image: Buffer }),
+      onSlider: onSlider,
+      onDevice: onDevice,
+      onAuth: onAuth,
+    });
 
     void (async () => {
       try {
@@ -248,12 +250,7 @@ export function LoginFlow({
 
     return () => {
       disposedRef.current = true;
-      client.off("system.online");
-      client.off("system.login.error");
-      client.off("system.login.qrcode");
-      client.off("system.login.slider");
-      client.off("system.login.device");
-      client.off("system.login.auth");
+      dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
