@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/icqqjs/cli/compare/v1.8.4...v1.9.0) (2026-06-24)
+
+
+### Features
+
+* **alert:** add peer provider for cross-daemon QQ notifications ([7e2011b](https://github.com/icqqjs/cli/commit/7e2011b705961270feae6f1902381a26e0657d62))
+* **alert:** headless lifecycle alerts with gated login IPC and Web UI ([991a476](https://github.com/icqqjs/cli/commit/991a476885717063fcd9c4bf487997b6225f666b))
+
+
+### Bug Fixes
+
+* bump skills submodule for Darwin skill optimizations. ([fa53cee](https://github.com/icqqjs/cli/commit/fa53ceee55451009ab8c5dfb6533860371455f80))
+
 ## [1.8.4](https://github.com/icqqjs/cli/compare/v1.8.3...v1.8.4) (2026-06-24)
 
 
