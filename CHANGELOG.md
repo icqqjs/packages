@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/icqqjs/cli/compare/v1.9.1...v1.10.0) (2026-07-13)
+
+
+### Features
+
+* **daemon:** handle token expiry with automatic reconnection ([d3d0a75](https://github.com/icqqjs/cli/commit/d3d0a7595da06a5200309976a37c41cd0c85a7d1))
+
 ## [1.9.1](https://github.com/icqqjs/cli/compare/v1.9.0...v1.9.1) (2026-06-24)
 
 
