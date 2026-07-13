@@ -175,6 +175,14 @@ export class ManagedRuntime {
       await this.reconnectOnNetworkLoss(notifications);
     });
 
+    // 登录态过期（icqq 在 TCP lost → register 失败时走此路径，而非 offline.network）。
+    // 未监听会导致非活跃账号掉线后既不重连也不进入 login_waiting，一直停在离线。
+    this.client.on("system.token.expire", async () => {
+      this.logger.log("[daemon] 登录态过期，尝试重新登录…");
+      notifications.notifyOfflineNetwork("登录态过期");
+      await this.reconnectOnNetworkLoss(notifications);
+    });
+
     this.client.on("system.offline.kickoff", (event: { message: string }) => {
       this.logger.log("[daemon] 被踢下线:", event.message);
       notifications.notifyOfflineKickoff(event.message);

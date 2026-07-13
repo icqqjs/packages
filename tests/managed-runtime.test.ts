@@ -234,6 +234,42 @@ describe("ManagedRuntime", () => {
     ]);
   });
 
+  it("reconnects on token expiry just like network loss", async () => {
+    const steps: string[] = [];
+    const client = createClientStub();
+    const notifications = createNotificationsStub();
+    const runtime = new ManagedRuntime({
+      uin: 123,
+      socketPath: "/tmp/icqq.sock",
+      client,
+      server: {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        getRpcPort: vi.fn(() => 0),
+      },
+      sleep: vi.fn(async () => { steps.push("sleep"); }),
+      awaitReconnectOutcome: vi.fn(async () => { steps.push("online"); }),
+      logger: { log: vi.fn((msg: string, ...rest: unknown[]) => {
+        steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
+      }) },
+      reconnectPolicy: { maxRetries: 3, delaysSeconds: [1, 2, 3] },
+    });
+
+    runtime.attachLifecycleHandlers(notifications);
+    await client.listeners.get("system.token.expire")?.();
+
+    expect(notifications.notifyOfflineNetwork).toHaveBeenCalledWith("登录态过期");
+    expect(client.login).toHaveBeenCalledWith(123);
+    expect(notifications.notifyReconnectSuccess).toHaveBeenCalledTimes(1);
+    expect(steps).toEqual([
+      "[daemon] 登录态过期，尝试重新登录…",
+      "[daemon] 1s 后尝试第 1 次重连…",
+      "sleep",
+      "online",
+      "[daemon] 重连成功",
+    ]);
+  });
+
   it("reports reconnect exhaustion after retry failures", async () => {
     const steps: string[] = [];
     const client = createClientStub();
