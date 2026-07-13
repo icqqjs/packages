@@ -28,6 +28,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
       - uses: pnpm/action-setup@v5
 
@@ -41,4 +43,4 @@ jobs:
         run: pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
 
       - name: Publish to npm
-        run: pnpm publish --no-git-checks --access public
+        run: pnpm -r publish --no-git-checks --access public

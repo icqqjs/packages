@@ -1,0 +1,68 @@
+{
+  "name": "@icqqjs/gateway",
+  "version": "0.1.0",
+  "description": "icqq multi-bot gateway with user isolation, central MCP and WS RPC",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "icqq-gateway": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./entry": "./dist/entry.js"
+  },
+  "files": [
+    "dist",
+    "app",
+    "next.config.mjs",
+    ".next"
+  ],
+  "scripts": {
+    "build": "tsdown && next build",
+    "postinstall": "node scripts/ensure-node-pty.mjs",
+    "dev": "tsx watch src/entry.ts",
+    "start": "node dist/entry.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@icqqjs/sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "express": "^5.2.1",
+    "gsap": "^3.15.0",
+    "next": "^16.2.1",
+    "node-pty": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "swr": "^2.4.1",
+    "tailwind-merge": "^3.5.0",
+    "ws": "^8.20.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
+    "tailwindcss": "^4.2.2",
+    "tsdown": "^0.21.7",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}

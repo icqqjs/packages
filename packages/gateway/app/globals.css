@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+}
+
+:root {
+  color-scheme: light dark;
+  --bg: #f4f5fa;
+  --bg-grid: rgba(99, 102, 241, 0.05);
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-2: rgba(255, 255, 255, 0.55);
+  --border: rgba(26, 27, 37, 0.08);
+  --text: #12131a;
+  --text-muted: #5c6178;
+  --glow: rgba(99, 102, 241, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #06060b;
+    --bg-grid: rgba(129, 140, 248, 0.06);
+    --surface: rgba(20, 21, 29, 0.78);
+    --surface-2: rgba(26, 27, 36, 0.62);
+    --border: rgba(236, 236, 241, 0.08);
+    --text: #f0f0f5;
+    --text-muted: #9a9fb5;
+    --glow: rgba(129, 140, 248, 0.28);
+  }
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--text);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.4;
+  background-image:
+    radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklab, var(--color-brand-500) 18%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      90% 70% at 100% 20%,
+      color-mix(in oklab, var(--color-brand-400) 12%, transparent),
+      transparent 50%
+    ),
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    40px 40px,
+    40px 40px;
+}
+
+body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-brand-500) 30%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-muted) 35%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@utility surface {
+  background-color: var(--surface);
+  backdrop-filter: blur(20px);
+}
+@utility surface-2 {
+  background-color: var(--surface-2);
+  backdrop-filter: blur(16px);
+}
+@utility text-muted {
+  color: var(--text-muted);
+}
+@utility glass-pill {
+  background: var(--surface);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, white 40%, transparent) inset,
+    0 20px 50px -20px color-mix(in oklab, var(--color-brand-600) 25%, transparent);
+}
+@utility display-title {
+  font-size: clamp(2.75rem, 5vw, 5.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}

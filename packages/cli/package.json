@@ -1,0 +1,88 @@
+{
+  "name": "@icqqjs/cli",
+  "version": "1.10.0",
+  "description": "基于 icqq 的命令行 QQ 客户端",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "icqq": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/cli.js",
+    "./ipc-client": "./dist/lib/ipc-client.js",
+    "./protocol": "./dist/daemon/protocol.js",
+    "./json-line-framing": "./dist/lib/json-line-framing.js",
+    "./mcp/action-contract": "./dist/mcp/action-contract.js",
+    "./mcp/exposure-contract": "./dist/mcp/exposure-contract.js",
+    "./mcp/policy": "./dist/mcp/policy.js",
+    "./paths": "./dist/lib/paths.js",
+    "./config": "./dist/lib/config.js",
+    "./daemon/supervisor": "./dist/daemon/supervisor.js",
+    "./daemon/login-actions": "./dist/daemon/login-actions.js"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/cli.js",
+    "clean": "node --eval \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "generate:skill-map": "node --experimental-strip-types scripts/generate-skill-mcp-map.ts",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "keywords": [
+    "qq",
+    "icqq",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/icqqjs/packages.git",
+    "directory": "packages/cli"
+  },
+  "author": {
+    "name": "凉菜",
+    "email": "admin@liucl.cn"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "ISC",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "packageManager": "pnpm@9.0.2",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.3",
+    "react-test-renderer": "^19.0.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "ink": "^6.0.0",
+    "pastel": "^4.0.0",
+    "pngjs": "^7.0.0",
+    "react": "^19.0.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@icqqjs/icqq": "^1.10.18"
+  },
+  "peerDependenciesMeta": {
+    "@icqqjs/icqq": {
+      "optional": true
+    }
+  }
+}

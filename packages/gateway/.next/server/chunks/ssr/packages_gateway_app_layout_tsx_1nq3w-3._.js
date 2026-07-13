@@ -1,0 +1,3 @@
+module.exports=[90148,a=>{"use strict";var b=a.i(80326);a.s(["default",0,function({children:a}){return(0,b.jsxs)("html",{lang:"zh-CN",children:[(0,b.jsxs)("head",{children:[(0,b.jsx)("link",{rel:"preconnect",href:"https://fonts.googleapis.com"}),(0,b.jsx)("link",{rel:"preconnect",href:"https://fonts.gstatic.com",crossOrigin:"anonymous"}),(0,b.jsx)("link",{href:"https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap",rel:"stylesheet"})]}),(0,b.jsx)("body",{className:"relative z-[2]",children:a})]})},"metadata",0,{title:"icqq gateway",description:"多用户多 bot icqq 网关：主机隔离、跨机控制面、集中 MCP 与 RPC。"}])},17123,a=>{a.n(a.i(90148))}];
+
+//# sourceMappingURL=packages_gateway_app_layout_tsx_1nq3w-3._.js.map

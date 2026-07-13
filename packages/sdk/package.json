@@ -1,0 +1,34 @@
+{
+  "name": "@icqqjs/sdk",
+  "version": "0.1.0",
+  "description": "Stable public SDK for icqq bot runtime, daemon lifecycle, and gateway integration",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./gateway": "./dist/gateway/index.mjs",
+    "./daemon": "./dist/daemon/index.mjs",
+    "./protocol": "./dist/protocol/index.mjs",
+    "./bot": "./dist/bot/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@icqqjs/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}

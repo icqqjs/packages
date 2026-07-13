@@ -1,0 +1,13 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/change-password/page": "app/change-password/page.js",
+  "/docs/page": "app/docs/page.js",
+  "/hosts/[id]/page": "app/hosts/[id]/page.js",
+  "/hosts/[id]/shell/page": "app/hosts/[id]/shell/page.js",
+  "/hosts/page": "app/hosts/page.js",
+  "/page": "app/page.js",
+  "/pair/page": "app/pair/page.js",
+  "/register/page": "app/register/page.js",
+  "/tokens/page": "app/tokens/page.js"
+}

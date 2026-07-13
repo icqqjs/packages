@@ -1,5 +1,7 @@
 # icqq CLI — Domain Glossary
 
+> 源码位于 `packages/cli/`；下述 `src/...` 路径均相对该包根目录。
+
 ## AccountBootstrap
 
 Module at `src/lib/account-bootstrap.ts` that owns QQ account login lifecycle and post-login orchestration. Callers use either **reject** policy (daemon, reconnect) or **interactive** policy (Ink `LoginFlow`).

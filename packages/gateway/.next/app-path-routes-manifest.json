@@ -1,0 +1,13 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/change-password/page": "/change-password",
+  "/docs/page": "/docs",
+  "/hosts/[id]/page": "/hosts/[id]",
+  "/hosts/[id]/shell/page": "/hosts/[id]/shell",
+  "/hosts/page": "/hosts",
+  "/page": "/",
+  "/pair/page": "/pair",
+  "/register/page": "/register",
+  "/tokens/page": "/tokens"
+}
