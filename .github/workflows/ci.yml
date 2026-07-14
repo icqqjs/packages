@@ -23,10 +23,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm typecheck
-
+      # 先构建：sdk/gateway 的 typecheck 依赖 @icqqjs/cli 的 dist 声明文件（dist 不入库）
       - run: pnpm build
 
+      - run: pnpm typecheck
+
       - run: pnpm test:coverage
+
+      - run: pnpm --filter @icqqjs/sdk --filter @icqqjs/gateway test
 
       - run: pnpm --filter @icqqjs/cli generate:skill-map --check

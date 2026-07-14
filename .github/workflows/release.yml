@@ -39,8 +39,8 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Install, typecheck and build
-        run: pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
+      - name: Install, build and typecheck
+        run: pnpm install --frozen-lockfile && pnpm build && pnpm typecheck
 
       - name: Publish to npm
         run: pnpm -r publish --no-git-checks --access public
