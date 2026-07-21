@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * icqq-gateway 独立 CLI（init / start / service / host approve）
  */
