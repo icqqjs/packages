@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/icqqjs/packages/compare/gateway-v0.1.2...gateway-v0.2.0) (2026-07-21)
+
+
+### Features
+
+* enhance UI components and improve error handling ([eec9b35](https://github.com/icqqjs/packages/commit/eec9b35799e946f212a0a6e6e8718dbd97c4f736))
+
 ## [0.1.2](https://github.com/icqqjs/packages/compare/gateway-v0.1.1...gateway-v0.1.2) (2026-07-21)
 
 

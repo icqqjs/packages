@@ -1,6 +1,6 @@
 {
   "name": "@icqqjs/gateway",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "icqq multi-bot gateway with user isolation, central MCP and WS RPC",
   "type": "module",
   "main": "dist/index.js",
