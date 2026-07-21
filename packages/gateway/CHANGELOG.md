@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/icqqjs/packages/compare/gateway-v0.1.1...gateway-v0.1.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* remove shebang from CLI file ([a885931](https://github.com/icqqjs/packages/commit/a8859317004ed69b6e92f0ba4f561703b761df26))
+
 ## [0.1.1](https://github.com/icqqjs/cli/compare/gateway-v0.1.0...gateway-v0.1.1) (2026-07-21)
 
 
