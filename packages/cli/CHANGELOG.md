@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/icqqjs/cli/compare/cli-v1.10.0...cli-v1.10.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* update .gitignore and README.md ([a4ea6f3](https://github.com/icqqjs/cli/commit/a4ea6f3cc8a89fb11a142372e45256f91cc9d5f9))
+
 ## [1.10.0](https://github.com/icqqjs/packages/compare/v1.9.1...v1.10.0) (2026-07-13)
 
 
