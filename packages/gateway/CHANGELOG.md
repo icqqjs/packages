@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/icqqjs/packages/compare/gateway-v0.2.0...gateway-v0.2.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* enhance documentation and improve URL handling in gateway ([d8ab1ac](https://github.com/icqqjs/packages/commit/d8ab1ac145c3558401e50b3d2a89390be22db5c6))
+
 ## [0.2.0](https://github.com/icqqjs/packages/compare/gateway-v0.1.2...gateway-v0.2.0) (2026-07-21)
 
 
