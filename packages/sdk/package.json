@@ -1,6 +1,6 @@
 {
   "name": "@icqqjs/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stable public SDK for icqq bot runtime, daemon lifecycle, and gateway integration",
   "type": "module",
   "main": "dist/index.mjs",
