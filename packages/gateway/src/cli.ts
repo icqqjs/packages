@@ -93,7 +93,7 @@ service 子命令:
   install | uninstall | start | stop | status
 
 host approve 选项:
-  -b, --remote-base <URL>  本机对外 URL
+  -b, --remote-base <URL>  本机对外 URL（经反代暴露时填域名，如 https://gw-remote.example.com）
       --name <名称>        主机显示名称
 `);
 }

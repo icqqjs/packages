@@ -2,6 +2,7 @@ import express, { type Request, type Response, type Router } from "express";
 import type { GatewayStore, HostRow, InstanceRow, UserRow } from "../db/store.js";
 import { resolveHostAgent, probeHostHealth } from "../hosts/executor.js";
 import { resolveSessionUser, SESSION_COOKIE } from "./auth.js";
+import { requestOrigin, sanitizeReportedBaseUrl } from "./origin.js";
 
 type AuthedRequest = Request & { user?: UserRow };
 
@@ -151,7 +152,9 @@ export function createApiRouter(store: GatewayStore): Router {
       userId: pairing.user_id,
       name: typeof name === "string" ? name : "远程主机",
       kind: "remote",
-      baseUrl: base_url,
+      // 远程未显式指定对外地址时会回推本机监听地址（可能是 loopback），
+      // 此时用对端 IP 兜底；反代域名等可达地址原样保留。
+      baseUrl: sanitizeReportedBaseUrl(base_url, req.socket.remoteAddress),
       hostToken: host_token,
       isLocal: false,
     });
@@ -216,7 +219,12 @@ export function createApiRouter(store: GatewayStore): Router {
     const user = req.user!;
     const pairing = store.createPairingCode(user.id);
     const settings = store.getSettings();
-    const masterUrl = `http://${settings.httpHost}:${settings.httpPort}`;
+    // 经反代/域名访问控制台时，配对命令中的主控地址应对外可达，
+    // 按当前请求 origin 生成，仅直连监听地址时回退到 settings。
+    const masterUrl = requestOrigin(
+      req,
+      `http://${settings.httpHost}:${settings.httpPort}`,
+    );
     res.json({
       code: pairing.code,
       master_url: masterUrl,

@@ -183,6 +183,13 @@ icqq-gateway service uninstall`}
               配对成功后，在主控点击「同步发现」即可拉取远程 <Code>~/.icqq</Code>{" "}
               中的账号列表。每台主机可独立建号、恢复登录、查看日志与打开 Shell。
             </P>
+            <P>
+              <strong>反向代理场景</strong>：配对命令中的主控地址按你访问控制台的地址自动生成——经域名访问即为{" "}
+              <Code>https://域名</Code>。远程主机若也经反代暴露，approve 时用{" "}
+              <Code>-b</Code> 指定其对外域名（如{" "}
+              <Code>icqq-gateway host approve https://主控域名 &lt;配对码&gt; -b https://本机域名</Code>
+              ）。反代需放行 WebSocket Upgrade，否则 Web Shell 与 RPC 不可用。
+            </P>
           </Section>
 
           <Section id="instances" title="Bot 实例">

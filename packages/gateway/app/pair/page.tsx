@@ -106,7 +106,10 @@ export default function PairPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <Field label="主控 URL">
+            <Field
+              label="主控 URL"
+              hint="主控经反向代理暴露时填域名，如 https://gw.example.com"
+            >
               <Input
                 placeholder="http://192.168.1.10:8787"
                 inputMode="url"
@@ -127,7 +130,7 @@ export default function PairPage() {
             </Field>
             <Field
               label="本机对外 URL（可选）"
-              hint="主控访问本机 host-agent 的地址"
+              hint="主控访问本机 host-agent 的地址；本机经反代暴露时填域名，留空则按本机监听地址上报"
             >
               <Input
                 placeholder="http://本机IP:8787"
