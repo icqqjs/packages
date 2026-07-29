@@ -3,6 +3,30 @@ import { loadConfig, saveConfig } from "@/lib/config.js";
 import { NotificationService } from "./notification-service.js";
 import { validateWebhookUrl } from "./webhook.js";
 
+export type DaemonReconnectState =
+  | "idle"
+  | "reconnecting"
+  | "offline"
+  | "waiting_login";
+
+export type DaemonHealthSnapshot = {
+  ipc: true;
+  qqOnline: boolean;
+  reconnectState: DaemonReconnectState;
+  stale: boolean;
+  lastEventAt: number | null;
+  lastOnlineAt: number | null;
+  lastOfflineAt: number | null;
+  lastReconnectAttemptAt: number | null;
+  lastReconnectSuccessAt: number | null;
+  lastDisconnectReason: string | null;
+};
+
+export type DaemonRuntimeEvent = {
+  event: string;
+  data: unknown;
+};
+
 /**
  * 守护进程运行时状态 — webhook、通知等跨 Module 共享状态的唯一来源。
  */
@@ -11,6 +35,8 @@ export class DaemonContext {
   readonly uin: number;
   readonly notifications: NotificationService;
   private webhookUrl: string;
+  private readonly runtimeListeners = new Set<(payload: DaemonRuntimeEvent) => void>();
+  private health: DaemonHealthSnapshot;
 
   constructor(
     client: Client,
@@ -21,6 +47,20 @@ export class DaemonContext {
     this.uin = uin;
     this.notifications = new NotificationService(uin, options.notifyEnabled ?? false);
     this.webhookUrl = options.webhookUrl ?? "";
+    const online = typeof client.isOnline === "function" ? client.isOnline() : false;
+    const now = Date.now();
+    this.health = {
+      ipc: true,
+      qqOnline: online,
+      reconnectState: "idle",
+      stale: !online,
+      lastEventAt: null,
+      lastOnlineAt: online ? now : null,
+      lastOfflineAt: null,
+      lastReconnectAttemptAt: null,
+      lastReconnectSuccessAt: null,
+      lastDisconnectReason: null,
+    };
   }
 
   static async fromClient(client: Client, uin: number): Promise<DaemonContext> {
@@ -37,6 +77,82 @@ export class DaemonContext {
 
   getWebhookUrl(): string {
     return this.webhookUrl;
+  }
+
+  getHealth(): DaemonHealthSnapshot {
+    return { ...this.health };
+  }
+
+  subscribeRuntimeEvents(
+    listener: (payload: DaemonRuntimeEvent) => void,
+  ): () => void {
+    this.runtimeListeners.add(listener);
+    return () => {
+      this.runtimeListeners.delete(listener);
+    };
+  }
+
+  noteProtocolEvent(_event: string): void {
+    this.health.lastEventAt = Date.now();
+  }
+
+  markOnline(): void {
+    const now = Date.now();
+    this.health.qqOnline = true;
+    this.health.reconnectState = "idle";
+    this.health.stale = false;
+    this.health.lastOnlineAt = now;
+    this.health.lastReconnectSuccessAt = now;
+    this.health.lastDisconnectReason = null;
+    this.emitRuntimeEvent("daemon.recovered");
+  }
+
+  markReconnecting(reason: string): void {
+    const now = Date.now();
+    this.health.qqOnline = false;
+    this.health.reconnectState = "reconnecting";
+    this.health.stale = true;
+    this.health.lastOfflineAt = now;
+    this.health.lastDisconnectReason = reason;
+    this.emitRuntimeEvent("daemon.degraded");
+  }
+
+  markReconnectAttempt(): void {
+    this.health.lastReconnectAttemptAt = Date.now();
+  }
+
+  markReconnectSuccess(): void {
+    this.markOnline();
+  }
+
+  markReconnectFailed(reason: string): void {
+    const now = Date.now();
+    this.health.qqOnline = false;
+    this.health.reconnectState = "offline";
+    this.health.stale = true;
+    this.health.lastOfflineAt = now;
+    this.health.lastDisconnectReason = reason;
+    this.emitRuntimeEvent("daemon.degraded");
+  }
+
+  markKickoff(reason: string): void {
+    const now = Date.now();
+    this.health.qqOnline = false;
+    this.health.reconnectState = "offline";
+    this.health.stale = true;
+    this.health.lastOfflineAt = now;
+    this.health.lastDisconnectReason = reason;
+    this.emitRuntimeEvent("daemon.degraded");
+  }
+
+  markLoginWaiting(reason: string): void {
+    const now = Date.now();
+    this.health.qqOnline = false;
+    this.health.reconnectState = "waiting_login";
+    this.health.stale = true;
+    this.health.lastOfflineAt = now;
+    this.health.lastDisconnectReason = reason;
+    this.emitRuntimeEvent("daemon.degraded");
   }
 
   async setWebhookUrl(url: string): Promise<string | null> {
@@ -78,6 +194,19 @@ export class DaemonContext {
       await saveConfig(config);
     } catch {
       /* ignore */
+    }
+  }
+
+  private emitRuntimeEvent(event: string): void {
+    const payload: DaemonRuntimeEvent = {
+      event,
+      data: {
+        uin: this.uin,
+        health: this.getHealth(),
+      },
+    };
+    for (const listener of this.runtimeListeners) {
+      listener(payload);
     }
   }
 }

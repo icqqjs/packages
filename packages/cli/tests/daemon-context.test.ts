@@ -101,4 +101,58 @@ describe("DaemonContext", () => {
     errSpy.mockRestore();
     vi.unstubAllGlobals();
   });
+
+  it("tracks daemon health transitions independently from cached client state", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-29T08:00:00Z"));
+
+    const ctx = new DaemonContext({ isOnline: () => true } as never, 7);
+    expect(ctx.getHealth()).toEqual({
+      ipc: true,
+      qqOnline: true,
+      reconnectState: "idle",
+      stale: false,
+      lastEventAt: null,
+      lastOnlineAt: new Date("2026-07-29T08:00:00Z").getTime(),
+      lastOfflineAt: null,
+      lastReconnectAttemptAt: null,
+      lastReconnectSuccessAt: null,
+      lastDisconnectReason: null,
+    });
+
+    vi.setSystemTime(new Date("2026-07-29T08:05:00Z"));
+    ctx.markReconnecting("network lost");
+    ctx.markReconnectAttempt();
+    ctx.noteProtocolEvent("message.private");
+
+    expect(ctx.getHealth()).toEqual({
+      ipc: true,
+      qqOnline: false,
+      reconnectState: "reconnecting",
+      stale: true,
+      lastEventAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastOnlineAt: new Date("2026-07-29T08:00:00Z").getTime(),
+      lastOfflineAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastReconnectAttemptAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastReconnectSuccessAt: null,
+      lastDisconnectReason: "network lost",
+    });
+
+    vi.setSystemTime(new Date("2026-07-29T08:06:00Z"));
+    ctx.markReconnectSuccess();
+    expect(ctx.getHealth()).toEqual({
+      ipc: true,
+      qqOnline: true,
+      reconnectState: "idle",
+      stale: false,
+      lastEventAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastOnlineAt: new Date("2026-07-29T08:06:00Z").getTime(),
+      lastOfflineAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastReconnectAttemptAt: new Date("2026-07-29T08:05:00Z").getTime(),
+      lastReconnectSuccessAt: new Date("2026-07-29T08:06:00Z").getTime(),
+      lastDisconnectReason: null,
+    });
+
+    vi.useRealTimers();
+  });
 });

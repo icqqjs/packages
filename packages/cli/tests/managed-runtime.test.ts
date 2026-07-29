@@ -53,6 +53,18 @@ function createNotificationsStub() {
   };
 }
 
+function createHealthTrackerStub() {
+  return {
+    markOnline: vi.fn(),
+    markReconnecting: vi.fn(),
+    markReconnectAttempt: vi.fn(),
+    markReconnectSuccess: vi.fn(),
+    markReconnectFailed: vi.fn(),
+    markKickoff: vi.fn(),
+    markLoginWaiting: vi.fn(),
+  };
+}
+
 describe("ManagedRuntime", () => {
   it("starts server and optional mcp host, then reports startup endpoints", async () => {
     const steps: string[] = [];
@@ -201,6 +213,7 @@ describe("ManagedRuntime", () => {
     const steps: string[] = [];
     const client = createClientStub();
     const notifications = createNotificationsStub();
+    const health = createHealthTrackerStub();
     const runtime = new ManagedRuntime({
       uin: 123,
       socketPath: "/tmp/icqq.sock",
@@ -216,6 +229,7 @@ describe("ManagedRuntime", () => {
         steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
       }) },
       reconnectPolicy: { maxRetries: 3, delaysSeconds: [1, 2, 3] },
+      healthTracker: health,
     });
 
     runtime.attachLifecycleHandlers(notifications);
@@ -225,6 +239,9 @@ describe("ManagedRuntime", () => {
     expect(client.login).toHaveBeenCalledWith(123);
     expect(notifications.notifyReconnectSuccess).toHaveBeenCalledTimes(1);
     expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
+    expect(health.markReconnecting).toHaveBeenCalledWith("lost");
+    expect(health.markReconnectAttempt).toHaveBeenCalledTimes(1);
+    expect(health.markReconnectSuccess).toHaveBeenCalledTimes(1);
     expect(steps).toEqual([
       "[daemon] 网络掉线: lost",
       "[daemon] 1s 后尝试第 1 次重连…",
@@ -274,6 +291,7 @@ describe("ManagedRuntime", () => {
     const steps: string[] = [];
     const client = createClientStub();
     const notifications = createNotificationsStub();
+    const health = createHealthTrackerStub();
     client.login.mockRejectedValue(new Error("boom"));
     const runtime = new ManagedRuntime({
       uin: 123,
@@ -289,6 +307,7 @@ describe("ManagedRuntime", () => {
         steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
       }) },
       reconnectPolicy: { maxRetries: 2, delaysSeconds: [1, 2] },
+      healthTracker: health,
     });
 
     runtime.attachLifecycleHandlers(notifications);
@@ -297,6 +316,9 @@ describe("ManagedRuntime", () => {
     expect(client.login).toHaveBeenCalledTimes(2);
     expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
     expect(notifications.notifyReconnectFailed).toHaveBeenCalledTimes(1);
+    expect(health.markReconnecting).toHaveBeenCalledWith("lost");
+    expect(health.markReconnectAttempt).toHaveBeenCalledTimes(2);
+    expect(health.markReconnectFailed).toHaveBeenCalledWith("boom");
     expect(steps).toEqual([
       "[daemon] 网络掉线: lost",
       "[daemon] 1s 后尝试第 1 次重连…",
@@ -313,6 +335,7 @@ describe("ManagedRuntime", () => {
     const steps: string[] = [];
     const client = createClientStub();
     const notifications = createNotificationsStub();
+    const health = createHealthTrackerStub();
     const runtime = new ManagedRuntime({
       uin: 123,
       socketPath: "/tmp/icqq.sock",
@@ -325,6 +348,7 @@ describe("ManagedRuntime", () => {
       logger: { log: vi.fn((msg: string, ...rest: unknown[]) => {
         steps.push(rest.length ? `${msg} ${rest.join(" ")}` : msg);
       }) },
+      healthTracker: health,
     });
 
     runtime.attachLifecycleHandlers(notifications);
@@ -335,6 +359,7 @@ describe("ManagedRuntime", () => {
     expect(client.login).not.toHaveBeenCalled();
     expect(notifications.notifyReconnectSuccess).not.toHaveBeenCalled();
     expect(notifications.notifyReconnectFailed).not.toHaveBeenCalled();
+    expect(health.markKickoff).toHaveBeenCalledWith("bye");
     expect(steps).toEqual(["[daemon] 被踢下线: bye"]);
   });
 

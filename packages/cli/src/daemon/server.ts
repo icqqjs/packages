@@ -37,6 +37,7 @@ export class DaemonServer {
   private authFailures = new Map<string, AuthFailure>();
   private nextSocketId = 0;
   private sockets = new Map<string, net.Socket>();
+  private runtimeEventsCleanup: (() => void) | null = null;
 
   constructor(
     ctx: DaemonContext,
@@ -51,6 +52,9 @@ export class DaemonServer {
       this.fanOutEvent(event, data),
     );
     this.eventPipeline.attachToDispatcher(this.eventDispatcher, ctx.client, ctx);
+    this.runtimeEventsCleanup = ctx.subscribeRuntimeEvents(({ event, data }) => {
+      this.fanOutEvent(event, data);
+    });
     this.ipcServer = net.createServer((socket) =>
       this.handleConnection(socket, "ipc"),
     );
@@ -301,6 +305,8 @@ export class DaemonServer {
   async stop(): Promise<void> {
     this.eventPipeline.detach();
     this.eventDispatcher.detach();
+    this.runtimeEventsCleanup?.();
+    this.runtimeEventsCleanup = null;
 
     for (const socket of this.sockets.values()) {
       socket.destroy();
