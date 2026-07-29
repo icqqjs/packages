@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2](https://github.com/icqqjs/packages/compare/gateway-v0.2.1...gateway-v0.2.2) (2026-07-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @icqqjs/sdk bumped to 0.1.2
+
 ## [0.2.1](https://github.com/icqqjs/packages/compare/gateway-v0.2.0...gateway-v0.2.1) (2026-07-21)
 
 
