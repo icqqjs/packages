@@ -102,6 +102,7 @@ export async function runDaemonEntry(uin: number): Promise<ManagedRuntime> {
       mcpHost,
       config,
       ipcToken,
+      healthTracker: ctx,
       cleanupPaths: [
         getPidPath(uin),
         getSocketPath(uin),

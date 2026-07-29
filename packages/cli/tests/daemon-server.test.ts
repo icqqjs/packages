@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { createHmac, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { DaemonContext } from "../src/daemon/daemon-context.js";
+import { DaemonContext } from "../src/daemon/daemon-context.js";
 import { DaemonServer } from "../src/daemon/server.js";
 import { Actions } from "../src/daemon/protocol.js";
 
@@ -54,15 +54,14 @@ function readLine(socket: net.Socket): Promise<unknown> {
 function createContext(): DaemonContext {
   const client = {
     em: vi.fn(),
+    isOnline: vi.fn(() => true),
     on: vi.fn(),
     off: vi.fn(),
   };
-  return {
-    uin: UIN,
-    client: client as never,
-    notifications: { notifyMessage: vi.fn() },
-    pushWebhook: vi.fn(async () => {}),
-  } as unknown as DaemonContext;
+  const ctx = new DaemonContext(client as never, UIN);
+  vi.spyOn(ctx, "pushWebhook").mockResolvedValue(undefined);
+  vi.spyOn(ctx.notifications, "notifyMessage").mockImplementation(() => undefined);
+  return ctx;
 }
 
 async function authIpc(socket: net.Socket) {
@@ -229,6 +228,37 @@ describe("DaemonServer", () => {
 
     socket.destroy();
     await server.stop();
+  });
+
+  it("fans out daemon health degradation events to authenticated IPC sockets", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-29T09:00:00Z"));
+
+    const ctx = createContext();
+    const server = new DaemonServer(ctx, IPC_TOKEN, null);
+    await server.start();
+
+    const socket = await new Promise<net.Socket>((resolve, reject) => {
+      const s = net.connect(socketPath);
+      s.once("connect", () => resolve(s));
+      s.once("error", reject);
+    });
+    await authIpc(socket);
+
+    const eventPromise = readLine(socket);
+    ctx.markReconnectFailed("heartbeat stalled");
+
+    const eventMsg = (await eventPromise) as {
+      event: string;
+      data: { health: { qqOnline: boolean; reconnectState: string } };
+    };
+    expect(eventMsg.event).toBe("daemon.degraded");
+    expect(eventMsg.data.health.qqOnline).toBe(false);
+    expect(eventMsg.data.health.reconnectState).toBe("offline");
+
+    socket.destroy();
+    await server.stop();
+    vi.useRealTimers();
   });
 
   it("falls back to port 0 when configured RPC port is in use", async () => {

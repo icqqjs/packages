@@ -590,15 +590,29 @@ const HANDLERS: Record<string, ActionHandler> = {
     return { ok: true };
   },
 
-  [Actions.GET_STATUS]: async (client, _params, _ctx) => ({
-    uin: client.uin,
-    nickname: client.nickname,
-    online: client.isOnline(),
-    sex: client.sex,
-    age: client.age,
-    friendCount: client.fl.size,
-    groupCount: client.gl.size,
-  }),
+  [Actions.GET_STATUS]: async (client, _params, ctx) => {
+    const health = ctx.getHealth();
+    return {
+      uin: client.uin,
+      nickname: client.nickname,
+      online: health.qqOnline,
+      ipc: health.ipc,
+      qqOnline: health.qqOnline,
+      clientOnline: client.isOnline(),
+      reconnectState: health.reconnectState,
+      stale: health.stale,
+      lastEventAt: health.lastEventAt,
+      lastOnlineAt: health.lastOnlineAt,
+      lastOfflineAt: health.lastOfflineAt,
+      lastReconnectAttemptAt: health.lastReconnectAttemptAt,
+      lastReconnectSuccessAt: health.lastReconnectSuccessAt,
+      lastDisconnectReason: health.lastDisconnectReason,
+      sex: client.sex,
+      age: client.age,
+      friendCount: client.fl.size,
+      groupCount: client.gl.size,
+    };
+  },
 
   [Actions.GET_SELF_PROFILE]: async (client, _params, _ctx) => ({
     uin: client.uin,

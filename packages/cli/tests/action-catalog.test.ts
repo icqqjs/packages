@@ -103,6 +103,17 @@ describe("pilot action catalog", () => {
       uin: 123,
       nickname: "bot",
       online: true,
+      ipc: true,
+      qqOnline: true,
+      clientOnline: true,
+      reconnectState: "idle",
+      stale: false,
+      lastEventAt: null,
+      lastOnlineAt: new Date("2026-05-30T00:00:00Z").getTime(),
+      lastOfflineAt: null,
+      lastReconnectAttemptAt: null,
+      lastReconnectSuccessAt: null,
+      lastDisconnectReason: null,
       sex: "male",
       age: 18,
       friendCount: 1,
@@ -111,6 +122,49 @@ describe("pilot action catalog", () => {
     expect(await listFriends?.execute(client, {}, createStubDaemonContext(client))).toEqual([
       { user_id: 1, nickname: "A", remark: "AR", sex: "female", class_id: 2 },
     ]);
+
+    vi.useRealTimers();
+  });
+
+  it("reports daemon health instead of trusting stale client cache alone", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T01:00:00Z"));
+
+    const getStatus = getPilotActionCatalogEntry(Actions.GET_STATUS);
+    const client = {
+      uin: 123,
+      nickname: "bot",
+      isOnline: () => true,
+      sex: "male",
+      age: 18,
+      fl: new Map(),
+      gl: new Map(),
+      blacklist: new Set(),
+    } as never;
+
+    const ctx = createStubDaemonContext(client);
+    ctx.markReconnectFailed("heartbeat stalled");
+
+    await expect(getStatus?.execute(client, {}, ctx)).resolves.toEqual({
+      uin: 123,
+      nickname: "bot",
+      online: false,
+      ipc: true,
+      qqOnline: false,
+      clientOnline: true,
+      reconnectState: "offline",
+      stale: true,
+      lastEventAt: null,
+      lastOnlineAt: new Date("2026-05-30T01:00:00Z").getTime(),
+      lastOfflineAt: new Date("2026-05-30T01:00:00Z").getTime(),
+      lastReconnectAttemptAt: null,
+      lastReconnectSuccessAt: null,
+      lastDisconnectReason: "heartbeat stalled",
+      sex: "male",
+      age: 18,
+      friendCount: 0,
+      groupCount: 0,
+    });
 
     vi.useRealTimers();
   });

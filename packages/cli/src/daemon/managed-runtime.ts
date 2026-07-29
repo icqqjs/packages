@@ -28,6 +28,16 @@ type RuntimeProcess = Pick<NodeJS.Process, "on" | "send" | "disconnect" | "exit"
 
 type RuntimeFs = Pick<typeof fs, "unlink" | "writeFile" | "mkdir">;
 
+type RuntimeHealthTracker = {
+  markOnline(): void;
+  markReconnecting(reason: string): void;
+  markReconnectAttempt(): void;
+  markReconnectSuccess(): void;
+  markReconnectFailed(reason: string): void;
+  markKickoff(reason: string): void;
+  markLoginWaiting(reason: string): void;
+};
+
 export type ReconnectExhaustAction = "exit" | "stay-offline";
 
 export type ManagedRuntimeOptions = {
@@ -51,6 +61,7 @@ export type ManagedRuntimeOptions = {
   reconnectExhaustAction?: ReconnectExhaustAction;
   config?: IcqqConfig;
   ipcToken?: string;
+  healthTracker?: RuntimeHealthTracker | null;
 };
 
 export type ManagedRuntimeLifecycleNotifications = {
@@ -97,6 +108,7 @@ export class ManagedRuntime {
   private readonly reconnectExhaustAction: ReconnectExhaustAction;
   private readonly config: IcqqConfig | null;
   private readonly ipcToken: string | null;
+  private readonly healthTracker: RuntimeHealthTracker | null;
   private shutdownPromise: Promise<void> | null = null;
   private reconnectPromise: Promise<void> | null = null;
   private reconnectAborted = false;
@@ -123,6 +135,7 @@ export class ManagedRuntime {
     this.reconnectExhaustAction = options.reconnectExhaustAction ?? "stay-offline";
     this.config = options.config ?? null;
     this.ipcToken = options.ipcToken ?? null;
+    this.healthTracker = options.healthTracker ?? null;
   }
 
   async start(): Promise<ManagedRuntimeStartInfo> {
@@ -164,6 +177,7 @@ export class ManagedRuntime {
       this.config != null && resolveAlertsConfig(this.config).enabled;
 
     this.client.on("system.online", () => {
+      this.healthTracker?.markOnline();
       if (alertsOn && this.config) {
         void sendDaemonAlert("online", { uin: this.uin }, { config: this.config });
       }
@@ -172,6 +186,7 @@ export class ManagedRuntime {
     this.client.on("system.offline.network", async (event: { message: string }) => {
       this.logger.log("[daemon] 网络掉线:", event.message);
       notifications.notifyOfflineNetwork(event.message);
+      this.healthTracker?.markReconnecting(event.message);
       await this.reconnectOnNetworkLoss(notifications);
     });
 
@@ -180,12 +195,14 @@ export class ManagedRuntime {
     this.client.on("system.token.expire", async () => {
       this.logger.log("[daemon] 登录态过期，尝试重新登录…");
       notifications.notifyOfflineNetwork("登录态过期");
+      this.healthTracker?.markReconnecting("登录态过期");
       await this.reconnectOnNetworkLoss(notifications);
     });
 
     this.client.on("system.offline.kickoff", (event: { message: string }) => {
       this.logger.log("[daemon] 被踢下线:", event.message);
       notifications.notifyOfflineKickoff(event.message);
+      this.healthTracker?.markKickoff(event.message);
     });
   }
 
@@ -198,6 +215,7 @@ export class ManagedRuntime {
     if (this.reconnectPromise) return this.reconnectPromise;
 
     this.reconnectPromise = (async () => {
+      let lastErrorMessage = "";
       for (let i = 0; i < this.reconnectPolicy.maxRetries; i++) {
         if (this.reconnectAborted) return;
 
@@ -207,9 +225,11 @@ export class ManagedRuntime {
         if (this.reconnectAborted) return;
 
         try {
+          this.healthTracker?.markReconnectAttempt();
           await this.client.login(this.uin);
           await this.awaitReconnectOutcome(this.client);
           this.logger.log("[daemon] 重连成功");
+          this.healthTracker?.markReconnectSuccess();
           notifications.notifyReconnectSuccess();
           return;
         } catch (error) {
@@ -219,6 +239,9 @@ export class ManagedRuntime {
             isInteractiveLoginRequired(error)
           ) {
             this.logger.log("[daemon] 重连需要交互式登录，进入 login_waiting…");
+            this.healthTracker?.markLoginWaiting(
+              error instanceof Error ? error.message : String(error),
+            );
             await this.server.stop();
             if (this.mcpHost) {
               await this.mcpHost.stop();
@@ -247,13 +270,17 @@ export class ManagedRuntime {
           this.logger.log(
             `[daemon] 第 ${i + 1} 次重连失败: ${error instanceof Error ? error.message : error}`,
           );
+          lastErrorMessage =
+            error instanceof Error ? error.message : String(error);
         }
       }
 
       this.logger.log(
         `[daemon] ${this.reconnectPolicy.maxRetries} 次重连均失败，放弃重连`,
       );
+      const reason = lastErrorMessage || "reconnect exhausted";
       notifications.notifyReconnectFailed();
+      this.healthTracker?.markReconnectFailed(reason);
       if (this.reconnectExhaustAction === "exit") {
         this.processRef.exit(1);
       }

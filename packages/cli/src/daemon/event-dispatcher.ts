@@ -53,9 +53,16 @@ export class DaemonEventDispatcher {
   private readonly bridge = new EventBridge();
   private readonly listeners = new Set<EventBridgeListener>();
   private socialCleanups: Array<() => void> = [];
+  private bridgeCleanup: (() => void) | null = null;
 
   attach(client: Client, ctx: DaemonContext): void {
     this.bridge.attach(client);
+    this.bridgeCleanup?.();
+    this.bridgeCleanup = this.bridge.subscribe(({ event }) => {
+      if (typeof ctx.noteProtocolEvent === "function") {
+        ctx.noteProtocolEvent(event);
+      }
+    });
     this.socialCleanups = registerSocialRequestHandlers(
       client,
       ctx.notifications,
@@ -72,6 +79,8 @@ export class DaemonEventDispatcher {
   }
 
   detach(): void {
+    this.bridgeCleanup?.();
+    this.bridgeCleanup = null;
     for (const cleanup of this.socialCleanups) {
       cleanup();
     }
