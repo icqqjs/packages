@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/icqqjs/packages/compare/cli-v1.10.1...cli-v1.10.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **cli:** surface daemon health to ipc clients ([#58](https://github.com/icqqjs/packages/issues/58)) ([2af62ac](https://github.com/icqqjs/packages/commit/2af62acd0305bcc6c7b2744236025750e34dbf57))
+
 ## [1.10.1](https://github.com/icqqjs/cli/compare/cli-v1.10.0...cli-v1.10.1) (2026-07-21)
 
 
