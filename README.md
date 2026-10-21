@@ -1,7 +1,7 @@
 # icqqjs/packages
 
-icqq 对外包的 monorepo，基于 pnpm workspace 统一管理以下包：
 [![group:860669870](https://img.shields.io/badge/group-860669870-blue)](https://jq.qq.com/?_wv=1027&k=xAdGDRVh) 
+icqq 对外包的 monorepo，基于 pnpm workspace 统一管理以下包：
 | 包 | 目录 | 说明 |
 |----|------|------|
 | [`@icqqjs/cli`](packages/cli) | `packages/cli` | 基于 icqq 的命令行 QQ 客户端（含 daemon、MCP、skills） |
